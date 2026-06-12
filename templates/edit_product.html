@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+<body>
+
+<h1>Edit Product</h1>
+
+<form method="POST" enctype="multipart/form-data">
+
+<input type="text"
+       name="name"
+       placeholder="Product Name"
+       value="{{ product.name }}">
+
+<br><br>
+
+<input type="text"
+       name="category"
+         placeholder="Product Category"
+       value="{{ product.category }}">
+
+<br><br>
+<h3>Product Description</h3>
+<textarea name="description" placeholder="Product Description">{{ product.description }}</textarea>
+
+<br><br>
+
+<h3>Product Features</h3>
+<textarea name="features" placeholder="Product Features">{{ product.features }}</textarea>
+
+<br><br>
+
+<h3>Product Applications</h3>
+<textarea name="applications" placeholder="Product Applications">{{ product.applications }}</textarea>
+
+<br><br>
+<h3>Product Image</h3>
+<br><input type="file" name="image">
+<br><br>
+{% if product.image_path %}
+    <img
+        src="{{ url_for('static', filename='uploads/' + product.image_path) }}"
+        alt="{{ product.name }}"
+        width="200"
+    >
+{% endif %}
+<br>
+<button type="submit">
+Update Product
+</button>
+
+</form>
+
+</body>
+</html>

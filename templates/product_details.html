@@ -1,0 +1,296 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ product.name }} - TRIDENT</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100">
+
+    {% include 'navbar.html' %}
+
+    <div class="max-w-7xl mx-auto p-8">
+
+        <!-- Top Section -->
+
+        <div class="grid lg:grid-cols-3 gap-8">
+
+            <!-- Product Image -->
+
+            <div class="lg:col-span-2">
+
+                <div class="bg-white rounded-2xl shadow overflow-hidden">
+
+                    {% if product.image_path %}
+                    <img
+                        src="{{ url_for('static', filename='uploads/' + product.image_path) }}"
+                        alt="{{ product.name }}"
+                        class="w-full h-[500px] object-cover"
+                    >
+                    {% else %}
+                    <div
+                        class="h-[500px] flex items-center justify-center text-gray-400"
+                    >
+                        No Image Available
+                    </div>
+                    {% endif %}
+
+                </div>
+
+            </div>
+
+            <!-- Product Information -->
+
+            <div>
+
+                <div class="bg-white rounded-2xl shadow p-6">
+
+                    <span
+                        class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm"
+                    >
+                        {{ product.category }}
+                    </span>
+
+                    <h1 class="text-4xl font-bold mt-4">
+                        {{ product.name }}
+                    </h1>
+
+                    <p class="text-gray-500 mt-4">
+                        {{ product.description }}
+                    </p>
+
+                    <div class="mt-8 space-y-4">
+
+                        <div
+                            class="flex justify-between border-b pb-3"
+                        >
+                            <span class="text-gray-500">
+                                Category
+                            </span>
+
+                            <span class="font-semibold">
+                                {{ product.category }}
+                            </span>
+                        </div>
+
+                        <div
+                            class="flex justify-between border-b pb-3"
+                        >
+                            <span class="text-gray-500">
+                                Product ID
+                            </span>
+
+                            <span class="font-semibold">
+                                {{ product.id }}
+                            </span>
+                        </div>
+
+                    </div>
+
+                    <div class="mt-8 space-y-3">
+
+                    <a
+                        href="/generate-ppt/{{ product.id }}"
+                        class="block text-center w-full bg-blue-600 text-white py-4 rounded-xl font-semibold"
+                    >
+                        Generate PowerPoint Deck
+                    </a>
+                        <button
+                            class="w-full border py-4 rounded-xl font-semibold"
+                        >
+                            Download Product Sheet
+                        </button>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </div>
+
+        <!-- Description -->
+
+        <div
+            class="bg-white rounded-2xl shadow p-8 mt-8"
+        >
+
+            <h2 class="text-2xl font-bold mb-4">
+                Description
+            </h2>
+
+            <p class="text-gray-600 leading-8">
+                {{ product.description }}
+            </p>
+
+        </div>
+
+        <!-- Features -->
+
+        <div
+            class="bg-white rounded-2xl shadow p-8 mt-8"
+        >
+
+            <h2 class="text-2xl font-bold mb-6">
+                Key Features
+            </h2>
+
+            <div class="grid md:grid-cols-2 gap-6">
+
+                {% for feature in product.features.split(',') %}
+
+                <div
+                    class="flex items-start gap-3"
+                >
+
+                    <div
+                        class="w-6 h-6 bg-blue-600 rounded-full mt-1"
+                    ></div>
+
+                    <div>
+                        {{ feature.strip() }}
+                    </div>
+
+                </div>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+        <!-- Applications -->
+
+        <div
+            class="bg-white rounded-2xl shadow p-8 mt-8"
+        >
+
+            <h2 class="text-2xl font-bold mb-6">
+                Applications
+            </h2>
+
+            <div class="flex flex-wrap gap-3">
+
+                {% for app in product.applications.split(',') %}
+
+                <span
+                    class="px-4 py-2 border rounded-xl bg-gray-50"
+                >
+                    {{ app.strip() }}
+                </span>
+
+                {% endfor %}
+
+            </div>
+
+        </div>
+
+        <!-- Technical Specifications -->
+
+        <div
+            class="bg-white rounded-2xl shadow mt-8 overflow-hidden"
+        >
+
+            <div
+                class="px-8 py-6 border-b"
+            >
+                <h2 class="text-2xl font-bold">
+                    Technical Specifications
+                </h2>
+            </div>
+
+            <table class="w-full">
+
+                <thead class="bg-gray-50">
+
+                    <tr>
+
+                        <th
+                            class="text-left px-8 py-4"
+                        >
+                            Parameter
+                        </th>
+
+                        <th
+                            class="text-left px-8 py-4"
+                        >
+                            Value
+                        </th>
+
+                    </tr>
+
+                </thead>
+
+                <tbody>
+
+                    <tr class="border-t">
+
+                        <td class="px-8 py-4">
+                            Product Name
+                        </td>
+
+                        <td class="px-8 py-4">
+                            {{ product.name }}
+                        </td>
+
+                    </tr>
+
+                    <tr class="border-t">
+
+                        <td class="px-8 py-4">
+                            Category
+                        </td>
+
+                        <td class="px-8 py-4">
+                            {{ product.category }}
+                        </td>
+
+                    </tr>
+
+                    <tr class="border-t">
+
+                        <td class="px-8 py-4">
+                            Applications
+                        </td>
+
+                        <td class="px-8 py-4">
+                            {{ product.applications }}
+                        </td>
+
+                    </tr>
+
+                </tbody>
+
+            </table>
+
+        </div>
+
+        <!-- Action Buttons -->
+
+        <div
+            class="flex gap-4 mt-8"
+        >
+
+            <a
+                href="/edit-product/{{ product.id }}"
+                class="bg-blue-600 text-white px-6 py-3 rounded-xl"
+            >
+                Edit Product
+            </a>
+
+            <a
+                href="/products"
+                class="bg-white border px-6 py-3 rounded-xl"
+            >
+                Back to Catalog
+            </a>
+
+        </div>
+
+    </div>
+
+</body>
+</html>

@@ -1,0 +1,59 @@
+<nav class="bg-white border-b border-gray-200 sticky top-0 z-50">
+
+    <div class="max-w-7xl mx-auto px-8 h-16 flex items-center justify-between">
+
+        <div class="flex items-center gap-10">
+
+            <a href="/" class="text-3xl font-black">
+                TRIDENT
+            </a>
+
+            <div class="flex gap-8">
+
+                <a href="/">Dashboard</a>
+
+                <a href="/products">
+                    Catalog
+                </a>
+
+                <a href="#">
+                    Presentations
+                </a>
+
+                <a href="#">
+                    Brochures
+                </a>
+
+                <a href="#">
+                    Analytics
+                </a>
+
+            </div>
+
+        </div>
+
+        <div class="flex items-center gap-4">
+
+            <form action="/products" method="GET">
+
+                <input
+                    type="text"
+                    name="search"
+                    value="{{ search if search else '' }}"
+                    placeholder="Search products..."
+                    class="border rounded-full px-4 py-2 w-64"
+                >
+                <button
+                    type="submit"
+                    class="bg-blue-600 text-white px-5 py-2 rounded-full"
+                >
+                    Search
+                </button>
+
+            </form>
+
+        </div>
+
+    </div>
+
+</nav>

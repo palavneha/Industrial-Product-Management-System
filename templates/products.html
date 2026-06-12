@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRIDENT - Product Catalog</title>
+
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+
+<body class="bg-gray-100">
+    {% include 'navbar.html' %}
+
+    <div class="max-w-7xl mx-auto p-8">
+
+        <!-- Header -->
+
+        <div class="flex justify-between items-center mb-8">
+
+            <div>
+                <h1 class="text-4xl font-bold">
+                    Product Catalog
+                </h1>
+
+                <p class="text-gray-500 mt-2">
+                    Manage and organize your industrial products
+                </p>
+            </div>
+
+            <a
+                href="/add-product"
+                class="bg-blue-600 text-white px-6 py-3 rounded-xl"
+            >
+                Add Product
+            </a>
+
+        </div>
+
+        <!-- Product List -->
+
+        <div class="bg-white rounded-2xl shadow overflow-hidden">
+
+            {% for product in products %}
+
+            <div class="flex justify-between items-center p-6 border-b hover:bg-gray-50">
+
+                <div class="flex items-center gap-5">
+
+                    {% if product.image_path %}
+                    <img
+                        src="{{ url_for('static', filename='uploads/' + product.image_path) }}"
+                        alt="{{ product.name }}"
+                        class="w-20 h-20 rounded-xl object-cover"
+                    >
+                    {% else %}
+                    <div class="w-20 h-20 bg-gray-200 rounded-xl"></div>
+                    {% endif %}
+
+                    <div>
+
+                        <h2 class="text-xl font-semibold">
+                            {{ product.name }}
+                        </h2>
+
+                        <p class="text-gray-500">
+                            {{ product.category }}
+                        </p>
+
+                        <p class="text-sm text-gray-400 mt-1">
+                            {{ product.description[:100] }}
+                        </p>
+
+                    </div>
+
+                </div>
+
+                <div class="flex gap-3">
+
+                    <a
+                        href="/product/{{ product.id }}"
+                        class="bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200"
+                    >
+                        View
+                    </a>
+
+                    <a
+                        href="/edit-product/{{ product.id }}"
+                        class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
+                    >
+                        Edit
+                    </a>
+
+                </div>
+
+            </div>
+
+            {% endfor %}
+
+        </div>
+
+    </div>
+
+</body>
+</html>
+
