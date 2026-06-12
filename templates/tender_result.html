@@ -48,7 +48,53 @@
             </div>
             {% endfor %}
         </div>
+        <div class="bg-white rounded-xl border p-6 mb-6">
+            <h2 class="text-xl font-bold mb-4">Customize Your Proposal</h2>
+            <p class="text-gray-500 mb-4">Choose what to include in the PPT:</p>
+            
+            <form method="POST" action="/tender/ppt">
+                <input type="hidden" name="summary" value="{{ result.tender_summary }}">
+                {% for item in result.matched_products %}
+                <input type="hidden" name="product_names" value="{{ item.name }}">
+                {% endfor %}
 
+                <div class="space-y-3 mb-6">
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" name="sections" value="cover" checked class="w-4 h-4">
+                        <span class="font-medium">Cover Slide (Company Introduction)</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" name="sections" value="tender_summary" checked class="w-4 h-4">
+                        <span class="font-medium">Tender Requirements Summary</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" name="sections" value="products" checked class="w-4 h-4">
+                        <span class="font-medium">Matched Products</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" name="sections" value="about" checked class="w-4 h-4">
+                        <span class="font-medium">About Trident Services</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" name="sections" value="services" checked class="w-4 h-4">
+                        <span class="font-medium">Our Services</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" name="sections" value="why_us" checked class="w-4 h-4">
+                        <span class="font-medium">Why Choose Trident?</span>
+                    </label>
+                    <label class="flex items-center gap-3 cursor-pointer">
+                        <input type="checkbox" name="sections" value="contact" checked class="w-4 h-4">
+                        <span class="font-medium">Contact Information</span>
+                    </label>
+                </div>
+
+                <button type="submit"
+                    class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700">
+                    Generate Proposal PPT
+                </button>
+            </form>
+        </div>
         <!-- Generate PPT Button -->
         <form method="POST" action="/tender/ppt">
             <input type="hidden" name="summary" value="{{ result.tender_summary }}">
