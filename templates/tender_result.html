@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRIDENT</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body { font-family: Inter, sans-serif; background: #f5f5f5; }
+    </style>
+</head>
+<body>
+    {% include 'navbar.html' %}
+    <main class="max-w-7xl mx-auto px-8 py-8">
+
+        <div class="mb-8">
+            <h1 class="text-4xl font-bold">Tender Analysis</h1>
+            <p class="text-gray-500 mt-2">AI-matched products based on tender requirements.</p>
+        </div>
+
+        <!-- Tender Summary -->
+        <div class="bg-white rounded-xl border p-6 mb-6">
+            <h2 class="text-xl font-bold mb-3">Tender Summary</h2>
+            <p class="text-gray-600">{{ result.tender_summary }}</p>
+        </div>
+
+        <!-- Matched Products -->
+        <div class="bg-white rounded-xl border overflow-hidden mb-6">
+            <div class="p-6 border-b">
+                <h2 class="text-xl font-bold">Matched Products</h2>
+            </div>
+
+            {% for item in result.matched_products %}
+            <div class="flex justify-between items-center p-6 border-b hover:bg-gray-50">
+                <div>
+                    <h3 class="text-lg font-semibold">{{ item.name }}</h3>
+                    <p class="text-gray-500 mt-1">{{ item.reason }}</p>
+                </div>
+                <div class="ml-6 shrink-0">
+                    {% if item.match_score == "High" %}
+                        <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">High Match</span>
+                    {% elif item.match_score == "Medium" %}
+                        <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">Medium Match</span>
+                    {% else %}
+                        <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-semibold">Low Match</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+
+        <!-- Generate PPT Button -->
+        <form method="POST" action="/tender/ppt">
+            <input type="hidden" name="summary" value="{{ result.tender_summary }}">
+            {% for item in result.matched_products %}
+            <input type="hidden" name="product_names" value="{{ item.name }}">
+            {% endfor %}
+            <button
+                type="submit"
+                class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700"
+            >
+                Generate Proposal PPT
+            </button>
+        </form>
+
+    </main>
+</body>
+</html>
