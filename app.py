@@ -16,7 +16,7 @@ from groq import Groq
 
 load_dotenv()
 
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+#pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
