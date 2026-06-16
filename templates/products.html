@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TRIDENT - Product Catalog</title>
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
 
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -27,10 +29,7 @@
                 </p>
             </div>
 
-            <a
-                href="/add-product"
-                class="bg-blue-600 text-white px-6 py-3 rounded-xl"
-            >
+            <a href="/add-product" class="bg-blue-600 text-white px-6 py-3 rounded-xl">
                 Add Product
             </a>
 
@@ -47,11 +46,8 @@
                 <div class="flex items-center gap-5">
 
                     {% if product.image_path %}
-                    <img
-                        src="{{ url_for('static', filename='uploads/' + product.image_path) }}"
-                        alt="{{ product.name }}"
-                        class="w-20 h-20 rounded-xl object-cover"
-                    >
+                    <img src="{{ url_for('static', filename='uploads/' + product.image_path) }}"
+                        alt="{{ product.name }}" class="w-20 h-20 rounded-xl object-cover">
                     {% else %}
                     <div class="w-20 h-20 bg-gray-200 rounded-xl"></div>
                     {% endif %}
@@ -76,17 +72,12 @@
 
                 <div class="flex gap-3">
 
-                    <a
-                        href="/product/{{ product.id }}"
-                        class="bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200"
-                    >
+                    <a href="/product/{{ product.id }}" class="bg-gray-100 px-4 py-2 rounded-lg hover:bg-gray-200">
                         View
                     </a>
 
-                    <a
-                        href="/edit-product/{{ product.id }}"
-                        class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700"
-                    >
+                    <a href="/edit-product/{{ product.id }}"
+                        class="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700">
                         Edit
                     </a>
 
@@ -101,5 +92,5 @@
     </div>
 
 </body>
-</html>
 
+</html>
