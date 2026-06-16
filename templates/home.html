@@ -1,10 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TRIDENT</title>
-
+    <link rel="icon" type="image/png" href="{{ url_for('static', filename='favicon.png') }}">
     <script src="https://cdn.tailwindcss.com"></script>
 
     <style>
@@ -37,10 +38,7 @@
         <!-- Action Cards -->
         <div class="grid md:grid-cols-3 gap-6 mb-10">
 
-            <a
-                href="/add-product"
-                class="bg-white rounded-xl p-6 border hover:shadow-lg transition"
-            >
+            <a href="/add-product" class="bg-white rounded-xl p-6 border hover:shadow-lg transition">
                 <h2 class="text-xl font-bold mb-2">
                     Add New Product
                 </h2>
@@ -50,9 +48,7 @@
                 </p>
             </a>
 
-            <div
-                class="bg-white rounded-xl p-6 border hover:shadow-lg transition"
-            >
+            <div class="bg-white rounded-xl p-6 border hover:shadow-lg transition">
                 <h2 class="text-xl font-bold mb-2">
                     Generate PowerPoint
                 </h2>
@@ -62,9 +58,7 @@
                 </p>
             </div>
 
-            <a href="/tender"
-                class="bg-white rounded-xl p-6 border hover:shadow-lg transition"
-            >
+            <a href="/tender" class="bg-white rounded-xl p-6 border hover:shadow-lg transition">
                 <h2 class="text-xl font-bold mb-2">
                     Tender Intelligence
                 </h2>
@@ -79,18 +73,13 @@
         <!-- Recent Products -->
         <div class="bg-white rounded-xl border overflow-hidden">
 
-            <div
-                class="flex justify-between items-center p-6 border-b"
-            >
+            <div class="flex justify-between items-center p-6 border-b">
 
                 <h2 class="text-2xl font-bold">
                     Recent Products
                 </h2>
 
-                <a
-                    href="/products"
-                    class="text-blue-600 font-medium"
-                >
+                <a href="/products" class="text-blue-600 font-medium">
                     View All Catalog →
                 </a>
 
@@ -98,18 +87,13 @@
 
             {% for product in products %}
 
-            <div
-                class="flex justify-between items-center p-6 border-b hover:bg-gray-50"
-            >
+            <div class="flex justify-between items-center p-6 border-b hover:bg-gray-50">
 
                 <div class="flex items-center gap-5">
 
                     {% if product.image_path %}
-                    <img
-                        src="{{ url_for('static', filename='uploads/' + product.image_path) }}"
-                        class="w-16 h-16 rounded-lg object-cover"
-                        alt="{{ product.name }}"
-                    >
+                    <img src="{{ url_for('static', filename='uploads/' + product.image_path) }}"
+                        class="w-16 h-16 rounded-lg object-cover" alt="{{ product.name }}">
                     {% endif %}
 
                     <div>
@@ -128,17 +112,11 @@
 
                 <div class="flex gap-3">
 
-                    <a
-                        href="/product/{{ product.id }}"
-                        class="bg-gray-100 px-4 py-2 rounded-lg"
-                    >
+                    <a href="/product/{{ product.id }}" class="bg-gray-100 px-4 py-2 rounded-lg">
                         View
                     </a>
 
-                    <a
-                        href="/edit-product/{{ product.id }}"
-                        class="bg-blue-600 text-white px-4 py-2 rounded-lg"
-                    >
+                    <a href="/edit-product/{{ product.id }}" class="bg-blue-600 text-white px-4 py-2 rounded-lg">
                         Edit
                     </a>
 
@@ -153,5 +131,5 @@
     </main>
 
 </body>
-</html>
 
+</html>
