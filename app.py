@@ -441,156 +441,6 @@ For confidence, use:
     return render_template("tender.html")
 
 
-@app.route("/tender/ppt", methods=["POST"])
-def tender_ppt():
-    summary = request.form.get("summary")
-    product_names = request.form.getlist("product_names")
-    sections = request.form.getlist("sections")
-
-    from pptx.util import Inches, Pt, Emu
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN
-    import copy
-
-    prs = Presentation()
-    prs.slide_width = Inches(13.33)
-    prs.slide_height = Inches(7.5)
-
-    # Color scheme from the template
-    BLACK = RGBColor(0x00, 0x00, 0x00)
-    LIGHT_GREY = RGBColor(0xC5, 0xCF, 0xD1)
-    WHITE = RGBColor(0xFD, 0xFC, 0xFB)
-
-    def add_slide(title_text, body_text):
-        slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
-        # Background
-        bg = slide.background
-        fill = bg.fill
-        fill.solid()
-        fill.fore_color.rgb = WHITE
-
-        # Title bar
-        from pptx.util import Inches, Pt
-
-        title_box = slide.shapes.add_textbox(
-            Inches(0.5), Inches(0.4), Inches(12), Inches(0.8)
-        )
-        tf = title_box.text_frame
-        tf.word_wrap = True
-        p = tf.paragraphs[0]
-        p.text = title_text
-        p.font.size = Pt(28)
-        p.font.bold = True
-        p.font.color.rgb = BLACK
-
-        # Divider line
-        from pptx.util import Pt as PtLine
-
-        line = slide.shapes.add_shape(
-            1, Inches(0.5), Inches(1.3), Inches(12), Inches(0.02)
-        )
-        line.fill.solid()
-        line.fill.fore_color.rgb = LIGHT_GREY
-        line.line.fill.background()
-
-        # Body
-        body_box = slide.shapes.add_textbox(
-            Inches(0.5), Inches(1.5), Inches(12), Inches(5.5)
-        )
-        tf2 = body_box.text_frame
-        tf2.word_wrap = True
-        p2 = tf2.paragraphs[0]
-        p2.text = body_text
-        p2.font.size = Pt(14)
-        p2.font.color.rgb = RGBColor(0x44, 0x44, 0x44)
-        return slide
-
-    # Cover
-    if "cover" in sections:
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        bg = slide.background
-        bg.fill.solid()
-        bg.fill.fore_color.rgb = BLACK
-        tb = slide.shapes.add_textbox(Inches(1), Inches(2.5), Inches(11), Inches(1.2))
-        p = tb.text_frame.paragraphs[0]
-        p.text = "Trident Services Pvt Ltd"
-        p.font.size = Pt(40)
-        p.font.bold = True
-        p.font.color.rgb = WHITE
-        tb2 = slide.shapes.add_textbox(Inches(1), Inches(3.8), Inches(11), Inches(0.6))
-        p2 = tb2.text_frame.paragraphs[0]
-        p2.text = "Authorized Cummins Dealer | Proposal"
-        p2.font.size = Pt(18)
-        p2.font.color.rgb = LIGHT_GREY
-
-    # Tender Summary
-    if "tender_summary" in sections:
-        add_slide("Tender Requirements", summary)
-
-    # Products
-    if "products" in sections:
-        for name in product_names:
-            product = Product.query.filter_by(name=name).first()
-            if product:
-                body = f"{product.description}\n\nKey Features:\n{product.features}\n\nApplications:\n{product.applications}"
-                add_slide(product.name, body)
-
-    # About
-    if "about" in sections:
-        add_slide(
-            "About Trident Services",
-            "Trident Services Pvt Ltd is an authorized Cummins dealer since 2004, "
-            "promoted by three Ex-General Managers of Cummins India Limited with 23 years of experience.\n\n"
-            "Headquartered in Pune, Maharashtra, we serve clients across Pune, Mumbai, Thane, "
-            "Kolhapur, Satara, and surrounding regions.\n\n"
-            "We provide end-to-end solutions including supply, installation, commissioning, "
-            "and 24/7 after-sales support for all Cummins products.",
-        )
-
-    # Services
-    if "services" in sections:
-        add_slide(
-            "Our Services",
-            "• 24x7 Service Availability\n"
-            "• 4-Hour Service Response Guarantee\n"
-            "• Annual Maintenance Contracts (AMC)\n"
-            "• Engine & Alternator Overhauling\n"
-            "• Fuel System Repair & Calibration\n"
-            "• Express Service Van\n"
-            "• Cummins Ashwashan Extended Warranty\n"
-            "• Paid / Call Base Services",
-        )
-
-    # Why Us
-    if "why_us" in sections:
-        add_slide(
-            "Why Choose Trident Services?",
-            "✓ Authorized Cummins Dealer since 2004\n"
-            "✓ Promoted by Ex-Cummins General Managers with 23 years experience\n"
-            "✓ 24/7 availability with 4-hour response guarantee\n"
-            "✓ Serving Railways, Manufacturing, Data Centers, Healthcare & Real Estate\n"
-            "✓ Complete lifecycle support — supply, install, maintain\n"
-            "✓ Genuine Cummins parts and certified technicians\n"
-            "✓ Coverage across Maharashtra including Pune, Mumbai, Kolhapur, Satara",
-        )
-
-    # Contact
-    if "contact" in sections:
-        add_slide(
-            "Contact Us",
-            "Head Office:\nTriden House, Survey No. 116, Mumbai-Bangalore Highway, Warje, Pune 411 058\n\n"
-            "Navi Mumbai Office:\nEL 54, TTC Industrial Area, Mahape, Navi Mumbai 400 710\n\n"
-            "Phone: +91 20 66266222 / 23\n"
-            "Email: customercare@tridents.net\n"
-            "After Hours: +91 98509 08146\n"
-            "Website: www.tridentservices.co.in",
-        )
-
-    filename = "Trident_Proposal.pptx"
-    prs.save(filename)
-    return send_file(filename, as_attachment=True)
-
-
 @app.route("/tender/eligibility", methods=["POST"])
 def tender_eligibility():
     tender_text = request.form.get("tender_text")
@@ -1003,99 +853,132 @@ def _remove_slide(prs, slide):
             return
 
 def _clone_slide(prs, template_slide):
+
     import copy
     from pptx.oxml.ns import qn
-    from lxml import etree
 
     slide_layout = template_slide.slide_layout
+
     new_slide = prs.slides.add_slide(slide_layout)
 
     # Replace spTree content
+
     sp_tree = new_slide.shapes._spTree
+
     for child in list(sp_tree):
+
         sp_tree.remove(child)
+
     for child in template_slide.shapes._spTree:
+
         sp_tree.append(copy.deepcopy(child))
 
     # Copy background
+
     tmpl_bg = template_slide._element.find(qn("p:bg"))
+
     if tmpl_bg is not None:
+
         existing_bg = new_slide._element.find(qn("p:bg"))
+
         if existing_bg is not None:
+
             new_slide._element.remove(existing_bg)
+
         new_slide._element.insert(2, copy.deepcopy(tmpl_bg))
 
-    # Copy image relationships with new rIds
+    # Copy image relationships
+
     rId_map = {}
+
     for old_rId, rel in template_slide.part.rels.items():
+
         if "image" in rel.reltype:
-            new_rId = new_slide.part.relate_to(rel.target_part, rel.reltype)
+
+            new_rId = new_slide.part.relate_to(
+                rel.target_part,
+                rel.reltype
+            )
+
             rId_map[old_rId] = new_rId
 
-    r_embed_attr = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+    r_embed_attr = (
+        "{http://schemas.openxmlformats.org/"
+        "officeDocument/2006/relationships}embed"
+    )
+
     for blip in new_slide._element.findall(
-        ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
+        ".//{http://schemas.openxmlformats.org/"
+        "drawingml/2006/main}blip"
     ):
+
         old_rId = blip.get(r_embed_attr)
+
         if old_rId in rId_map:
-            blip.set(r_embed_attr, rId_map[old_rId])
 
-    # === MOVE the new slide to come right after the template slide ===
-    sldIdLst = prs.slides._sldIdLst
-    all_sldIds = list(sldIdLst)
-    
-    # Find template slide's position
-    template_part = template_slide.part
-    template_pos = None
-    for i, sldId in enumerate(all_sldIds):
-        rId = sldId.get("{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id")
-        if prs.slides.part.rels[rId].target_part == template_part:
-            template_pos = i
-            break
-
-    if template_pos is not None:
-        # The new slide is currently last — move it to template_pos + 1
-        new_sldId = all_sldIds[-1]
-        sldIdLst.remove(new_sldId)
-        sldIdLst.insert(template_pos + 1, new_sldId)
+            blip.set(
+                r_embed_attr,
+                rId_map[old_rId]
+            )
 
     return new_slide
+def _replace_slide_image(slide, image_url):
 
-def _replace_slide_image(slide, image_url, target_index=1):
-    """Download image_url and replace the content blip (not the logo) on the slide."""
-    import requests as _req
+    import requests
 
     try:
-        resp = _req.get(image_url, timeout=10)
-        resp.raise_for_status()
-        image_bytes = resp.content
 
-        blips = slide._element.findall(
-            ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
-        )
-        if not blips:
-            print("No blip found on slide.")
+        response = requests.get(image_url, timeout=10)
+
+        response.raise_for_status()
+
+        image_bytes = response.content
+
+        pictures = []
+
+        for shape in slide.shapes:
+
+            if shape.shape_type == 13:   # Picture
+
+                area = shape.width * shape.height
+
+                pictures.append((area, shape))
+
+        if not pictures:
+
+            print("No pictures found.")
+
             return
 
-        if len(blips) <= target_index:
-            print(f"Only {len(blips)} blip(s) found, can't use index {target_index}, using last.")
-            target_index = -1
+        # Ignore the logo by choosing the largest picture
 
-        blip = blips[target_index]
-        r_embed_attr = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        rId = blip.get(r_embed_attr)
+        pictures.sort(reverse=True)
+
+        picture = pictures[0][1]
+
+        blips = picture._element.findall(
+            ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
+        )
+
+        if not blips:
+
+            return
+
+        r_embed_attr = (
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+        )
+
+        rId = blips[0].get(r_embed_attr)
 
         if rId and rId in slide.part.rels:
+
             slide.part.rels[rId].target_part._blob = image_bytes
-            print(f"Replaced image rId={rId}")
-        else:
-            print(f"rId={rId} not found in slide relationships.")
+
+            print("Image replaced.")
 
     except Exception as e:
-        import traceback
-        print(f"Image replacement failed for {image_url}: {e}")
-        traceback.print_exc()
 
+        print(e)
 @app.route("/generate-service-ppt/<int:id>")
 def generate_service_ppt(id):
     """Generate a PPT for a single service using the Brand Strategy template (Slide 6)."""
@@ -1125,7 +1008,7 @@ def generate_service_ppt(id):
     })
 
     if service.image_url:
-        _replace_slide_image(slide, service.image_url, target_index=1)
+        _replace_slide_image(slide, service.image_url)
 
     # Clear manufacturing placeholders on slide 7 so they don't appear raw
     _replace_text_in_slide(prs.slides[6], {
@@ -1218,59 +1101,53 @@ def generate_all_services_ppt():
             "{{WHY_CHOOSE_US}}": why_text,
         })
         if service.image_url:
-            _replace_slide_image(slide, service.image_url, target_index=1)
+            _replace_slide_image(slide, service.image_url)
 
         all_slides.append((prs_single, 5))  # (presentation, slide_index)
 
     # Merge all slide-6s into one presentation
+
     base_prs, base_idx = all_slides[0]
-    import copy
-    from pptx.oxml.ns import qn
+
+    # Remove every slide except slide 5 (the service template)
+    slides_to_remove = []
+
+    for i, slide in enumerate(base_prs.slides):
+
+        if i != base_idx:
+
+            slides_to_remove.append(slide)
+
+    for slide in slides_to_remove:
+
+        _remove_slide(base_prs, slide)
+
+    # Add all remaining service slides
 
     for prs_single, slide_idx in all_slides[1:]:
+
         src_slide = prs_single.slides[slide_idx]
-        slide_layout = base_prs.slide_layouts[6]
-        new_slide = base_prs.slides.add_slide(slide_layout)
 
-        sp_tree = new_slide.shapes._spTree
-        for child in list(sp_tree):
-            sp_tree.remove(child)
-        for child in src_slide.shapes._spTree:
-            sp_tree.append(copy.deepcopy(child))
+        _clone_slide(base_prs, src_slide)
 
-        tmpl_bg = src_slide._element.find(qn("p:bg"))
-        if tmpl_bg is not None:
-            existing_bg = new_slide._element.find(qn("p:bg"))
-            if existing_bg is not None:
-                new_slide._element.remove(existing_bg)
-            new_slide._element.insert(2, copy.deepcopy(tmpl_bg))
+    output_path = os.path.join(
+        "static",
+        "uploads",
+        "All_Services_Presentation.pptx"
+    )
 
-        r_embed_attr = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        rId_map = {}
-        for old_rId, rel in src_slide.part.rels.items():
-            if "image" in rel.reltype:
-                new_rId = new_slide.part.relate_to(rel.target_part, rel.reltype)
-                rId_map[old_rId] = new_rId
+    os.makedirs(
+        os.path.dirname(output_path),
+        exist_ok=True
+    )
 
-        for blip in new_slide._element.findall(
-            ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
-        ):
-            old_rId = blip.get(r_embed_attr)
-            if old_rId in rId_map:
-                blip.set(r_embed_attr, rId_map[old_rId])
-
-    # Remove all non-service slides from base_prs (keep only slide at base_idx)
-    # Collect the slide OBJECT to keep, then remove everything else
-    keep_slide = base_prs.slides[base_idx]
-    all_slide_objects = list(base_prs.slides)
-    for s in all_slide_objects:
-        if s != keep_slide:
-            _remove_slide(base_prs, s)
-
-    output_path = os.path.join("static", "uploads", "All_Services_Presentation.pptx")
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
     base_prs.save(output_path)
-    return send_file(output_path, as_attachment=True, download_name="All_Services_Presentation.pptx")
+
+    return send_file(
+        output_path,
+        as_attachment=True,
+        download_name="All_Services_Presentation.pptx"
+    )
 
 @app.route("/generate-all-manufacturing-ppt")
 def generate_all_manufacturing_ppt():
@@ -1305,43 +1182,20 @@ def generate_all_manufacturing_ppt():
         all_slides.append((prs_single, 6))
 
     base_prs, base_idx = all_slides[0]
-    for prs_single, slide_idx in all_slides[1:]:
-        src_slide = prs_single.slides[slide_idx]
-        slide_layout = base_prs.slide_layouts[6]
-        new_slide = base_prs.slides.add_slide(slide_layout)
 
-        sp_tree = new_slide.shapes._spTree
-        for child in list(sp_tree):
-            sp_tree.remove(child)
-        for child in src_slide.shapes._spTree:
-            sp_tree.append(copy.deepcopy(child))
-
-        tmpl_bg = src_slide._element.find(qn("p:bg"))
-        if tmpl_bg is not None:
-            existing_bg = new_slide._element.find(qn("p:bg"))
-            if existing_bg is not None:
-                new_slide._element.remove(existing_bg)
-            new_slide._element.insert(2, copy.deepcopy(tmpl_bg))
-
-        r_embed_attr = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        rId_map = {}
-        for old_rId, rel in src_slide.part.rels.items():
-            if "image" in rel.reltype:
-                new_rId = new_slide.part.relate_to(rel.target_part, rel.reltype)
-                rId_map[old_rId] = new_rId
-        for blip in new_slide._element.findall(
-            ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
-        ):
-            old_rId = blip.get(r_embed_attr)
-            if old_rId in rId_map:
-                blip.set(r_embed_attr, rId_map[old_rId])
-
-    # Collect the slide OBJECT to keep, then remove everything else
+    # Keep only the first slide template
     keep_slide = base_prs.slides[base_idx]
-    all_slide_objects = list(base_prs.slides)
-    for s in all_slide_objects:
+
+    for s in list(base_prs.slides):
         if s != keep_slide:
             _remove_slide(base_prs, s)
+
+    # Add the remaining generated slides
+    for prs_single, slide_idx in all_slides[1:]:
+
+        src_slide = prs_single.slides[slide_idx]
+
+        _clone_slide(base_prs, src_slide)
 
     output_path = os.path.join("static", "uploads", "All_Manufacturing_Presentation.pptx")
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
@@ -1419,7 +1273,7 @@ def generate_custom_ppt():
             "{{WHY_CHOOSE_US}}": why_text,
         })
         if service.image_url:
-            _replace_slide_image(slide, service.image_url, target_index=1)
+            _replace_slide_image(slide, service.image_url)
 
         all_items.append((prs_single, 5))
 
@@ -1443,7 +1297,7 @@ def generate_custom_ppt():
             "{{MANUFACTURING_OVERVIEW}}": overview_text,
         })
         if product.image_url:
-            _replace_slide_image(slide, product.image_url, target_index=1)
+            _replace_slide_image(slide, product.image_url)
 
         all_items.append((prs_single, 6))
 
@@ -1452,18 +1306,20 @@ def generate_custom_ppt():
 
     # Use first item as base, merge rest into it
     base_prs, base_idx = all_items[0]
-    for prs_single, slide_idx in all_items[1:]:
-        merge_slide_into(base_prs, prs_single.slides[slide_idx])
 
-    # Remove all slides except the one we want from base_prs
-    # Keep only base_idx, remove everything else
-    # Collect the slide OBJECT to keep, then remove everything else
+    # Keep only the first slide template
     keep_slide = base_prs.slides[base_idx]
-    all_slide_objects = list(base_prs.slides)
-    for s in all_slide_objects:
+
+    for s in list(base_prs.slides):
         if s != keep_slide:
             _remove_slide(base_prs, s)
 
+    # Add the remaining generated slides
+    for prs_single, slide_idx in all_items[1:]:
+
+        src_slide = prs_single.slides[slide_idx]
+
+        _clone_slide(base_prs, src_slide)
     filename = "Trident_Custom_Selection.pptx"
     output_path = os.path.join("static", "uploads", filename)
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
