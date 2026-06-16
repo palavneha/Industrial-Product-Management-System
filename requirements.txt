@@ -10,3 +10,4 @@ Pillow
 groq
 requests
 gunicorn
+aspose-slides
