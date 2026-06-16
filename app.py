@@ -13,6 +13,7 @@ from datetime import datetime
 import json
 import os
 from groq import Groq
+import aspose.slides as slides
 
 load_dotenv()
 
@@ -838,92 +839,35 @@ def _replace_text_in_slide(slide, replacements):
 
     process_shapes(slide.shapes)
 
+def shorten_title(text, max_length=28):
 
+    if not text:
 
-def _remove_slide(prs, slide):
-    """Remove a slide from the presentation."""
-    xml_slides = prs.slides._sldIdLst
-    slide_part = slide.part
-    for sldId in list(xml_slides):
-        rId = sldId.get(
-            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
-        )
-        if rId and prs.slides.part.rels[rId].target_part == slide_part:
-            xml_slides.remove(sldId)
-            return
+        return ""
 
-def _clone_slide(prs, template_slide):
+    text = text.strip()
 
-    import copy
-    from pptx.oxml.ns import qn
+    if len(text) <= max_length:
 
-    slide_layout = template_slide.slide_layout
+        return text
 
-    new_slide = prs.slides.add_slide(slide_layout)
+    words = text.split()
 
-    # Replace spTree content
+    result = ""
 
-    sp_tree = new_slide.shapes._spTree
+    for word in words:
 
-    for child in list(sp_tree):
+        candidate = result + " " + word if result else word
 
-        sp_tree.remove(child)
+        if len(candidate) > max_length - 3:
 
-    for child in template_slide.shapes._spTree:
+            break
 
-        sp_tree.append(copy.deepcopy(child))
+        result = candidate
 
-    # Copy background
+    return result + "..."
 
-    tmpl_bg = template_slide._element.find(qn("p:bg"))
-
-    if tmpl_bg is not None:
-
-        existing_bg = new_slide._element.find(qn("p:bg"))
-
-        if existing_bg is not None:
-
-            new_slide._element.remove(existing_bg)
-
-        new_slide._element.insert(2, copy.deepcopy(tmpl_bg))
-
-    # Copy image relationships
-
-    rId_map = {}
-
-    for old_rId, rel in template_slide.part.rels.items():
-
-        if "image" in rel.reltype:
-
-            new_rId = new_slide.part.relate_to(
-                rel.target_part,
-                rel.reltype
-            )
-
-            rId_map[old_rId] = new_rId
-
-    r_embed_attr = (
-        "{http://schemas.openxmlformats.org/"
-        "officeDocument/2006/relationships}embed"
-    )
-
-    for blip in new_slide._element.findall(
-        ".//{http://schemas.openxmlformats.org/"
-        "drawingml/2006/main}blip"
-    ):
-
-        old_rId = blip.get(r_embed_attr)
-
-        if old_rId in rId_map:
-
-            blip.set(
-                r_embed_attr,
-                rId_map[old_rId]
-            )
-
-    return new_slide
-def _replace_slide_image(slide, image_url):
-
+def _replace_slide_image(slide, image_url, target_index=1):
     import requests
 
     try:
@@ -1007,8 +951,8 @@ def generate_service_ppt(id):
         "{{WHY_CHOOSE_US}}": why_text,
     })
 
-    if service.image_url:
-        _replace_slide_image(slide, service.image_url)
+    #if service.image_url:
+        #replace_slide_image(slide, service.image_url)
 
     # Clear manufacturing placeholders on slide 7 so they don't appear raw
     _replace_text_in_slide(prs.slides[6], {
@@ -1050,8 +994,8 @@ def generate_manufacturing_ppt(id):
         "{{MANUFACTURING_OVERVIEW}}": overview_text,
     })
 
-    if product.image_url:
-        _replace_slide_image(slide, product.image_url, target_index=1)
+    #if product.image_url:
+    #    _replace_slide_image(slide, product.image_url, target_index=1)
 
     # Clear service placeholders on slide 6
     _replace_text_in_slide(prs.slides[5], {
@@ -1069,269 +1013,534 @@ def generate_manufacturing_ppt(id):
     return send_file(output_path, as_attachment=True, download_name=filename)
 
 
-@app.route("/generate-all-services-ppt")
-def generate_all_services_ppt():
-    all_services = Service.query.all()
-    if not all_services:
-        return redirect("/services")
+# @app.route("/generate-all-services-ppt")
+# def generate_all_services_ppt():
 
-    template_path = os.path.join("templates", "Brand Strategy.pptx")
+#     all_services = Service.query.all()
 
-    all_slides = []
-    for service in all_services:
-        # Fresh presentation for EACH service
-        prs_single = Presentation(template_path)
-        slide = prs_single.slides[5]
+#     if not all_services:
+
+#         return redirect("/services")
+
+#     template_path = os.path.join(
+#         "templates",
+#         "Brand Strategy.pptx"
+#     )
+
+#     prs = Presentation(template_path)
+
+#     SERVICE_TEMPLATE = 5
+
+#     for i, service in enumerate(all_services):
+
+#         if i == 0:
+
+#             slide = prs.slides[SERVICE_TEMPLATE]
+
+#         else:
+
+#             slide = duplicate_slide(
+#                 prs,
+#                 SERVICE_TEMPLATE
+#             )
+
+#         content = None
+
+#         if service.detailed_content:
+
+#             try:
+
+#                 content = json.loads(
+#                     service.detailed_content
+#                 )
+
+#             except:
+
+#                 content = None
+
+#         overview_text = (
+
+#             content["overview"]
+
+#             if content and content.get("overview")
+
+#             else service.short_description or ""
+
+#         )
+
+#         services_text = (
+
+#             "\n".join(
+
+#                 [f"• {x}" for x in content["key_features"]]
+
+#             )
+
+#             if content and content.get("key_features")
+
+#             else service.short_description or ""
+
+#         )
+
+#         why_text = (
+
+#             "\n".join(
+
+#                 [f"✓ {x}" for x in content["why_choose_us"]]
+
+#             )
+
+#             if content and content.get("why_choose_us")
+
+#             else
+
+#             "✓ Professional team\n"
+
+#             "✓ Quality workmanship"
+
+#         )
+
+#         _replace_text_in_slide(
+
+#             slide,
+
+#             {
+
+#                 "{{SERVICE_NAME}}": shorten_title(service.name),
+
+#                 "{{SERVICE_OVERVIEW}}": overview_text,
+
+#                 "{{THE_SERVICES}}": services_text,
+
+#                 "{{WHY_CHOOSE_US}}": why_text,
+
+#             }
+
+#         )
+
+#         if service.image_url:
+
+#             _replace_slide_image(
+
+#                 slide,
+
+#                 service.image_url,
+
+#                 target_index=1
+
+#             )
+
+#     output_path = os.path.join(
+
+#         "static",
+
+#         "uploads",
+
+#         "All_Services_Presentation.pptx"
+
+#     )
+
+#     os.makedirs(
+
+#         os.path.dirname(output_path),
+
+#         exist_ok=True
+
+#     )
+
+#     prs.save(output_path)
+
+#     return send_file(
+
+#         output_path,
+
+#         as_attachment=True,
+
+#         download_name="All_Services_Presentation.pptx"
+
+#     )
+# @app.route("/generate-all-manufacturing-ppt")
+# def generate_all_manufacturing_ppt():
+
+#     all_products = ManufacturingProduct.query.all()
+
+#     if not all_products:
+
+#         return redirect("/manufacturing")
+
+#     template_path = os.path.join(
+
+#         "templates",
+
+#         "Brand Strategy.pptx"
+
+#     )
+
+#     prs = Presentation(template_path)
+
+#     MANUFACTURING_TEMPLATE = 6
+
+#     for i, product in enumerate(all_products):
+
+#         if i == 0:
+
+#             slide = prs.slides[MANUFACTURING_TEMPLATE]
+
+#         else:
+
+#             slide = duplicate_slide(
+
+#                 prs,
+
+#                 MANUFACTURING_TEMPLATE
+
+#             )
+
+#         content = None
+
+#         if product.detailed_content:
+
+#             try:
+
+#                 content = json.loads(
+
+#                     product.detailed_content
+
+#                 )
+
+#             except:
+
+#                 content = None
+
+#         overview_text = (
+
+#             content["overview"]
+
+#             if content and content.get("overview")
+
+#             else product.short_description or ""
+
+#         )
+
+#         _replace_text_in_slide(
+
+#             slide,
+
+#             {
+
+#                 "{{MANUFACTURING_NAME}}": shorten_title(product.name),
+
+#                 "{{MANUFACTURING_OVERVIEW}}": overview_text,
+
+#             }
+
+#         )
+
+#         if product.image_url:
+
+#             _replace_slide_image(
+
+#                 slide,
+
+#                 product.image_url,
+
+#                 target_index=1
+
+#             )
+
+#     output_path = os.path.join(
+
+#         "static",
+
+#         "uploads",
+
+#         "All_Manufacturing_Presentation.pptx"
+
+#     )
+
+#     os.makedirs(
+
+#         os.path.dirname(output_path),
+
+#         exist_ok=True
+
+#     )
+
+#     prs.save(output_path)
+
+#     return send_file(
+
+#         output_path,
+
+#         as_attachment=True,
+
+#         download_name="All_Manufacturing_Presentation.pptx"
+
+#     )
+@app.route("/generate-custom-ppt", methods=["POST"])
+def generate_custom_ppt():
+
+    import aspose.slides as slides
+
+    service_ids = request.form.getlist("service_ids")
+
+    product_ids = request.form.getlist("product_ids")
+
+    if not service_ids and not product_ids:
+
+        return redirect(
+            request.referrer or "/build-ppt"
+        )
+
+    template_path = os.path.join(
+        "templates",
+        "Brand Strategy.pptx"
+    )
+
+    pres = slides.Presentation(template_path)
+
+    SERVICE_TEMPLATE = 5
+    MANUFACTURING_TEMPLATE = 6
+
+    insert_position = 7
+
+    for sid in service_ids:
+
+        service = Service.query.get(int(sid))
+
+        if not service:
+
+            continue
 
         content = None
+
         if service.detailed_content:
+
             try:
-                content = json.loads(service.detailed_content)
+
+                content = json.loads(
+                    service.detailed_content
+                )
+
             except:
+
                 content = None
 
-        overview_text = content["overview"] if content and content.get("overview") else (service.short_description or "")
-        services_text = "\n".join([f"• {f}" for f in content["key_features"]]) if content and content.get("key_features") else (service.short_description or "")
-        why_text = "\n".join([f"✓ {r}" for r in content["why_choose_us"]]) if content and content.get("why_choose_us") else "✓ Professional team\n✓ Quality workmanship"
+        new_slide = pres.slides.insert_clone(
+            insert_position,
+            pres.slides[SERVICE_TEMPLATE]
+        )
 
-        _replace_text_in_slide(slide, {
-            "{{SERVICE_NAME}}": service.name,
-            "{{SERVICE_OVERVIEW}}": overview_text,
-            "{{THE_SERVICES}}": services_text,
-            "{{WHY_CHOOSE_US}}": why_text,
-        })
-        if service.image_url:
-            _replace_slide_image(slide, service.image_url)
+        insert_position += 1
 
-        all_slides.append((prs_single, 5))  # (presentation, slide_index)
+        overview = (
+            content["overview"]
 
-    # Merge all slide-6s into one presentation
+            if content and content.get("overview")
 
-    base_prs, base_idx = all_slides[0]
+            else service.short_description or ""
+        )
 
-    # Remove every slide except slide 5 (the service template)
-    slides_to_remove = []
+        services = (
+            "\n".join(
+                [
+                    f"• {x}"
 
-    for i, slide in enumerate(base_prs.slides):
+                    for x in content["key_features"]
+                ]
+            )
 
-        if i != base_idx:
+            if content and content.get("key_features")
 
-            slides_to_remove.append(slide)
+            else ""
+        )
 
-    for slide in slides_to_remove:
+        why = (
+            "\n".join(
+                [
+                    f"✓ {x}"
 
-        _remove_slide(base_prs, slide)
+                    for x in content["why_choose_us"]
+                ]
+            )
 
-    # Add all remaining service slides
+            if content and content.get("why_choose_us")
 
-    for prs_single, slide_idx in all_slides[1:]:
+            else ""
+        )
 
-        src_slide = prs_single.slides[slide_idx]
+        replacements = {
 
-        _clone_slide(base_prs, src_slide)
+            "{{SERVICE_NAME}}":
+            shorten_title(service.name),
+
+            "{{SERVICE_OVERVIEW}}":
+            overview,
+
+            "{{THE_SERVICES}}":
+            services,
+
+            "{{WHY_CHOOSE_US}}":
+            why,
+
+        }
+
+        for shape in new_slide.shapes:
+
+            if hasattr(shape, "text_frame"):
+
+                if shape.text_frame:
+
+                    text = shape.text_frame.text
+
+                    for old, new in replacements.items():
+
+                        text = text.replace(
+                            old,
+                            new
+                        )
+
+                    shape.text_frame.text = text
+
+    for pid in product_ids:
+
+        product = ManufacturingProduct.query.get(
+            int(pid)
+        )
+
+        if not product:
+
+            continue
+
+        content = None
+
+        if product.detailed_content:
+
+            try:
+
+                content = json.loads(
+                    product.detailed_content
+                )
+
+            except:
+
+                content = None
+
+        new_slide = pres.slides.insert_clone(
+            insert_position,
+            pres.slides[MANUFACTURING_TEMPLATE]
+        )
+
+        insert_position += 1
+
+        overview = (
+            content["overview"]
+
+            if content and content.get("overview")
+
+            else product.short_description or ""
+        )
+
+        replacements = {
+
+            "{{MANUFACTURING_NAME}}":
+            shorten_title(product.name),
+
+            "{{MANUFACTURING_OVERVIEW}}":
+            overview,
+
+        }
+
+        for shape in new_slide.shapes:
+
+            if hasattr(shape, "text_frame"):
+
+                if shape.text_frame:
+
+                    text = shape.text_frame.text
+
+                    for old, new in replacements.items():
+
+                        text = text.replace(
+                            old,
+                            new
+                        )
+
+                    shape.text_frame.text = text
+
+    pres.slides.remove_at(
+        MANUFACTURING_TEMPLATE
+    )
+
+    pres.slides.remove_at(
+        SERVICE_TEMPLATE
+    )
+
+    filename = (
+        "Trident_Custom_Selection.pptx"
+    )
+
+    output_path = os.path.join(
+
+        "static",
+
+        "uploads",
+
+        filename
+
+    )
+
+    pres.save(
+
+        output_path,
+
+        slides.export.SaveFormat.PPTX
+
+    )
+
+    return send_file(
+
+        output_path,
+
+        as_attachment=True,
+
+        download_name=filename
+
+    )
+@app.route("/build-ppt")
+def build_ppt_picker():
+
+    all_services = Service.query.all()
+
+    all_products = ManufacturingProduct.query.all()
+
+    return render_template(
+        "build_ppt.html",
+        services=all_services,
+        products=all_products
+    )
+@app.route("/test-ppt")
+def test_ppt():
+
+    template_path = os.path.join(
+        "templates",
+        "Brand Strategy.pptx"
+    )
+
+    prs = Presentation(template_path)
 
     output_path = os.path.join(
         "static",
         "uploads",
-        "All_Services_Presentation.pptx"
+        "test_output.pptx"
     )
 
-    os.makedirs(
-        os.path.dirname(output_path),
-        exist_ok=True
-    )
-
-    base_prs.save(output_path)
+    prs.save(output_path)
 
     return send_file(
         output_path,
-        as_attachment=True,
-        download_name="All_Services_Presentation.pptx"
+        as_attachment=True
     )
-
-@app.route("/generate-all-manufacturing-ppt")
-def generate_all_manufacturing_ppt():
-    import copy
-    from pptx.oxml.ns import qn
-
-    all_products = ManufacturingProduct.query.all()
-    if not all_products:
-        return redirect("/manufacturing")
-
-    template_path = os.path.join("templates", "Brand Strategy.pptx")
-
-    all_slides = []
-    for product in all_products:
-        prs_single = Presentation(template_path)
-        slide = prs_single.slides[6]
-        content = None
-        if product.detailed_content:
-            try:
-                content = json.loads(product.detailed_content)
-            except:
-                content = None
-
-        overview_text = content["overview"] if content and content.get("overview") else (product.short_description or "")
-        _replace_text_in_slide(slide, {
-            "{{MANUFACTURING_NAME}}": product.name,
-            "{{MANUFACTURING_OVERVIEW}}": overview_text,
-        })
-        if product.image_url:
-            _replace_slide_image(slide, product.image_url, target_index=1)
-
-        all_slides.append((prs_single, 6))
-
-    base_prs, base_idx = all_slides[0]
-
-    # Keep only the first slide template
-    keep_slide = base_prs.slides[base_idx]
-
-    for s in list(base_prs.slides):
-        if s != keep_slide:
-            _remove_slide(base_prs, s)
-
-    # Add the remaining generated slides
-    for prs_single, slide_idx in all_slides[1:]:
-
-        src_slide = prs_single.slides[slide_idx]
-
-        _clone_slide(base_prs, src_slide)
-
-    output_path = os.path.join("static", "uploads", "All_Manufacturing_Presentation.pptx")
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    base_prs.save(output_path)
-    return send_file(output_path, as_attachment=True, download_name="All_Manufacturing_Presentation.pptx")
-@app.route("/generate-custom-ppt", methods=["POST"])
-def generate_custom_ppt():
-    import copy
-    from pptx.oxml.ns import qn
-
-    service_ids = request.form.getlist("service_ids")
-    product_ids = request.form.getlist("product_ids")
-
-    if not service_ids and not product_ids:
-        return redirect(request.referrer or "/services")
-
-    template_path = os.path.join("templates", "Brand Strategy.pptx")
-
-    def merge_slide_into(base_prs, src_slide):
-        """Copy src_slide into base_prs as a new last slide."""
-        slide_layout = base_prs.slide_layouts[6]
-        new_slide = base_prs.slides.add_slide(slide_layout)
-
-        sp_tree = new_slide.shapes._spTree
-        for child in list(sp_tree):
-            sp_tree.remove(child)
-        for child in src_slide.shapes._spTree:
-            sp_tree.append(copy.deepcopy(child))
-
-        tmpl_bg = src_slide._element.find(qn("p:bg"))
-        if tmpl_bg is not None:
-            existing_bg = new_slide._element.find(qn("p:bg"))
-            if existing_bg is not None:
-                new_slide._element.remove(existing_bg)
-            new_slide._element.insert(2, copy.deepcopy(tmpl_bg))
-
-        r_embed_attr = "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        rId_map = {}
-        for old_rId, rel in src_slide.part.rels.items():
-            if "image" in rel.reltype:
-                new_rId = new_slide.part.relate_to(rel.target_part, rel.reltype)
-                rId_map[old_rId] = new_rId
-
-        for blip in new_slide._element.findall(
-            ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
-        ):
-            old_rId = blip.get(r_embed_attr)
-            if old_rId in rId_map:
-                blip.set(r_embed_attr, rId_map[old_rId])
-
-    # Build list of (src_presentation, slide_index) for each selected item
-    all_items = []  # (prs_single, slide_index)
-
-    for sid in service_ids:
-        service = Service.query.get(int(sid))
-        if not service:
-            continue
-        content = None
-        if service.detailed_content:
-            try:
-                content = json.loads(service.detailed_content)
-            except:
-                content = None
-
-        prs_single = Presentation(template_path)
-        slide = prs_single.slides[5]
-        overview_text = content["overview"] if content and content.get("overview") else (service.short_description or "")
-        services_text = "\n".join([f"• {f}" for f in content["key_features"]]) if content and content.get("key_features") else (service.short_description or "")
-        why_text = "\n".join([f"✓ {r}" for r in content["why_choose_us"]]) if content and content.get("why_choose_us") else "✓ Professional team\n✓ Quality workmanship"
-
-        _replace_text_in_slide(slide, {
-            "{{SERVICE_NAME}}": service.name,
-            "{{SERVICE_OVERVIEW}}": overview_text,
-            "{{THE_SERVICES}}": services_text,
-            "{{WHY_CHOOSE_US}}": why_text,
-        })
-        if service.image_url:
-            _replace_slide_image(slide, service.image_url)
-
-        all_items.append((prs_single, 5))
-
-    for pid in product_ids:
-        product = ManufacturingProduct.query.get(int(pid))
-        if not product:
-            continue
-        content = None
-        if product.detailed_content:
-            try:
-                content = json.loads(product.detailed_content)
-            except:
-                content = None
-
-        prs_single = Presentation(template_path)
-        slide = prs_single.slides[6]
-        overview_text = content["overview"] if content and content.get("overview") else (product.short_description or "")
-
-        _replace_text_in_slide(slide, {
-            "{{MANUFACTURING_NAME}}": product.name,
-            "{{MANUFACTURING_OVERVIEW}}": overview_text,
-        })
-        if product.image_url:
-            _replace_slide_image(slide, product.image_url)
-
-        all_items.append((prs_single, 6))
-
-    if not all_items:
-        return redirect(request.referrer or "/services")
-
-    # Use first item as base, merge rest into it
-    base_prs, base_idx = all_items[0]
-
-    # Keep only the first slide template
-    keep_slide = base_prs.slides[base_idx]
-
-    for s in list(base_prs.slides):
-        if s != keep_slide:
-            _remove_slide(base_prs, s)
-
-    # Add the remaining generated slides
-    for prs_single, slide_idx in all_items[1:]:
-
-        src_slide = prs_single.slides[slide_idx]
-
-        _clone_slide(base_prs, src_slide)
-    filename = "Trident_Custom_Selection.pptx"
-    output_path = os.path.join("static", "uploads", filename)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    base_prs.save(output_path)
-    return send_file(output_path, as_attachment=True, download_name=filename)
-
-@app.route("/build-ppt")
-def build_ppt_picker():
-    all_services = Service.query.all()
-    all_products = ManufacturingProduct.query.all()
-    return render_template("build_ppt.html", services=all_services, products=all_products)
-
 if __name__ == "__main__":
     with app.app_context():
         db.create_all()
