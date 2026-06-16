@@ -80,7 +80,9 @@ def home():
 
 from sqlalchemy import or_
 
-
+@app.route("/test")
+def test():
+    return app.send_static_file("favicon.png")
 @app.route("/products")
 def products():
 
