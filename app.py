@@ -77,6 +77,9 @@ def home():
 
     return render_template("home.html", products=recent_products)
 
+@app.route("/favicon.ico")
+def favicon():
+    return app.send_static_file("favicon.png")
 
 from sqlalchemy import or_
 
