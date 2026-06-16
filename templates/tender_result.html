@@ -5,9 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TRIDENT</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body { font-family: Inter, sans-serif; background: #f5f5f5; }
-    </style>
+    <style>body { font-family: Inter, sans-serif; background: #f5f5f5; }</style>
 </head>
 <body>
     {% include 'navbar.html' %}
@@ -15,98 +13,103 @@
 
         <div class="mb-8">
             <h1 class="text-4xl font-bold">Tender Analysis</h1>
-            <p class="text-gray-500 mt-2">AI-matched products based on tender requirements.</p>
+            <p class="text-gray-500 mt-2">{{ result.tender_name }} — ₹{{ result.tender_value_crore }} Crore</p>
         </div>
 
-        <!-- Tender Summary -->
+        <!-- ELIGIBILITY SECTION -->
+        <div class="bg-white rounded-xl border overflow-hidden mb-6">
+            <div class="p-6 border-b flex justify-between items-center">
+                <h2 class="text-xl font-bold">Eligibility Check</h2>
+                {% if result.eligibility.verdict == "ELIGIBLE" %}
+                    <span class="bg-green-100 text-green-700 px-4 py-2 rounded-full font-bold text-sm">✓ ELIGIBLE</span>
+                {% elif result.eligibility.verdict == "PARTIALLY ELIGIBLE" %}
+                    <span class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full font-bold text-sm">⚠ PARTIALLY ELIGIBLE</span>
+                {% else %}
+                    <span class="bg-red-100 text-red-700 px-4 py-2 rounded-full font-bold text-sm">✗ NOT ELIGIBLE</span>
+                {% endif %}
+            </div>
+
+            <div class="p-6 border-b">
+                <p class="text-gray-600">{{ result.eligibility.verdict_reason }}</p>
+            </div>
+
+            <!-- Criteria table -->
+            {% for criterion in result.eligibility.criteria %}
+            <div class="flex items-start justify-between p-5 border-b hover:bg-gray-50">
+                <div class="flex-1">
+                    <p class="font-semibold text-gray-800">{{ criterion.requirement }}</p>
+                    <p class="text-gray-500 text-sm mt-1">Our status: {{ criterion.company_status }}</p>
+                    <p class="text-gray-400 text-sm mt-1">{{ criterion.notes }}</p>
+                </div>
+                <div class="ml-6 shrink-0">
+                    {% if criterion.result == "PASS" %}
+                        <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">✓ Pass</span>
+                    {% elif criterion.result == "PARTIAL" %}
+                        <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">⚠ Partial</span>
+                    {% else %}
+                        <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-semibold">✗ Fail</span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
+
+            <div class="p-6 bg-blue-50">
+                <p class="text-blue-800 font-medium">📋 Recommended Action: {{ result.eligibility.recommended_action }}</p>
+            </div>
+        </div>
+
+        <!-- TENDER SUMMARY -->
         <div class="bg-white rounded-xl border p-6 mb-6">
             <h2 class="text-xl font-bold mb-3">Tender Summary</h2>
             <p class="text-gray-600">{{ result.tender_summary }}</p>
         </div>
 
-        <!-- Matched Products -->
+        <!-- MATCHED PRODUCTS -->
         <div class="bg-white rounded-xl border overflow-hidden mb-6">
             <div class="p-6 border-b">
-                <h2 class="text-xl font-bold">Matched Products</h2>
+                <h2 class="text-xl font-bold">Matched Services & Products</h2>
             </div>
 
             {% for item in result.matched_products %}
-            <div class="flex justify-between items-center p-6 border-b hover:bg-gray-50">
-                <div>
-                    <h3 class="text-lg font-semibold">{{ item.name }}</h3>
-                    <p class="text-gray-500 mt-1">{{ item.reason }}</p>
-                </div>
-                <div class="ml-6 shrink-0">
-                    {% if item.match_score == "High" %}
-                        <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">High Match</span>
-                    {% elif item.match_score == "Medium" %}
-                        <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">Medium Match</span>
-                    {% else %}
-                        <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-semibold">Low Match</span>
-                    {% endif %}
+            <div class="p-6 border-b hover:bg-gray-50">
+                <div class="flex justify-between items-start">
+                    <div class="flex-1">
+                        <h3 class="text-lg font-semibold">{{ item.name }}</h3>
+                        <p class="text-gray-500 mt-1">{{ item.reason }}</p>
+                        {% if item.evidence %}
+                        <p class="text-blue-600 text-sm mt-2 italic">"{{ item.evidence }}"</p>
+                        {% endif %}
+                    </div>
+                    <div class="ml-6 shrink-0">
+                        {% if item.match_score == "High" %}
+                            <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">High Match</span>
+                        {% elif item.match_score == "Medium" %}
+                            <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">Medium Match</span>
+                        {% else %}
+                            <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-semibold">Low Match</span>
+                        {% endif %}
+                    </div>
                 </div>
             </div>
             {% endfor %}
         </div>
-        <div class="bg-white rounded-xl border p-6 mb-6">
-            <h2 class="text-xl font-bold mb-4">Customize Your Proposal</h2>
-            <p class="text-gray-500 mb-4">Choose what to include in the PPT:</p>
-            
-            <form method="POST" action="/tender/ppt">
-                <input type="hidden" name="summary" value="{{ result.tender_summary }}">
-                {% for item in result.matched_products %}
-                <input type="hidden" name="product_names" value="{{ item.name }}">
-                {% endfor %}
 
-                <div class="space-y-3 mb-6">
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" name="sections" value="cover" checked class="w-4 h-4">
-                        <span class="font-medium">Cover Slide (Company Introduction)</span>
-                    </label>
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" name="sections" value="tender_summary" checked class="w-4 h-4">
-                        <span class="font-medium">Tender Requirements Summary</span>
-                    </label>
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" name="sections" value="products" checked class="w-4 h-4">
-                        <span class="font-medium">Matched Products</span>
-                    </label>
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" name="sections" value="about" checked class="w-4 h-4">
-                        <span class="font-medium">About Trident Services</span>
-                    </label>
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" name="sections" value="services" checked class="w-4 h-4">
-                        <span class="font-medium">Our Services</span>
-                    </label>
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" name="sections" value="why_us" checked class="w-4 h-4">
-                        <span class="font-medium">Why Choose Trident?</span>
-                    </label>
-                    <label class="flex items-center gap-3 cursor-pointer">
-                        <input type="checkbox" name="sections" value="contact" checked class="w-4 h-4">
-                        <span class="font-medium">Contact Information</span>
-                    </label>
-                </div>
-
-                <button type="submit"
-                    class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700">
-                    Generate Proposal PPT
-                </button>
-            </form>
-        </div>
-        <!-- Generate PPT Button -->
+        <!-- GENERATE PPT -->
         <form method="POST" action="/tender/ppt">
             <input type="hidden" name="summary" value="{{ result.tender_summary }}">
             {% for item in result.matched_products %}
             <input type="hidden" name="product_names" value="{{ item.name }}">
             {% endfor %}
-            <button
-                type="submit"
-                class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700"
-            >
-                Generate Proposal PPT
-            </button>
+            <div class="flex gap-4">
+                <button type="submit"
+                    class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700">
+                    Generate Proposal PPT
+                </button>
+                <a href="/tender/fill"
+                    class="bg-gray-800 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-900">
+                    Fill Tender Form →
+                </a>
+            </div>
         </form>
 
     </main>

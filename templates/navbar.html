@@ -16,17 +16,19 @@
                     Catalog
                 </a>
 
-                <a href="#">
-                    Presentations
+                <a href="/services">
+                    Services
                 </a>
 
-                <a href="#">
-                    Brochures
+                <a href="/manufacturing">
+                    Manufacturing
                 </a>
 
-                <a href="#">
-                    Analytics
+                <a href="/tender">
+                    Tender
                 </a>
+
+                <a href="/build-ppt" style="text-decoration: none;">Build Custom Selection</a>
 
             </div>
 
@@ -36,17 +38,9 @@
 
             <form action="/products" method="GET">
 
-                <input
-                    type="text"
-                    name="search"
-                    value="{{ search if search else '' }}"
-                    placeholder="Search products..."
-                    class="border rounded-full px-4 py-2 w-64"
-                >
-                <button
-                    type="submit"
-                    class="bg-blue-600 text-white px-5 py-2 rounded-full"
-                >
+                <input type="text" name="search" value="{{ search if search else '' }}" placeholder="Search products..."
+                    class="border rounded-full px-4 py-2 w-64">
+                <button type="submit" class="bg-blue-600 text-white px-5 py-2 rounded-full">
                     Search
                 </button>
 

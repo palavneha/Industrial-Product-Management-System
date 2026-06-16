@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ service.name }} — TRIDENT Engineers & Associates</title>
+    <meta name="description" content="{{ service.short_description }}">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        :root {
+            --primary: #1e3c72;
+            --primary-light: #2a5298;
+            --accent: #e74c3c;
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: 'Inter', sans-serif; background: #f8fafc; }
+
+        /* Hero Banner */
+        .detail-hero {
+            position: relative;
+            height: 420px;
+            overflow: hidden;
+        }
+        .detail-hero img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .detail-hero .overlay {
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(to bottom, rgba(30,60,114,0.4) 0%, rgba(30,60,114,0.85) 100%);
+        }
+        .detail-hero .hero-content {
+            position: absolute;
+            bottom: 50px;
+            left: 50px;
+            right: 50px;
+            color: white;
+        }
+        .hero-content .breadcrumb {
+            font-size: 13px;
+            opacity: 0.8;
+            margin-bottom: 12px;
+        }
+        .hero-content .breadcrumb a {
+            color: white;
+            text-decoration: none;
+        }
+        .hero-content .breadcrumb a:hover { text-decoration: underline; }
+        .hero-content h1 {
+            font-size: 42px;
+            font-weight: 900;
+            letter-spacing: -1px;
+            margin-bottom: 10px;
+        }
+        .hero-content .tagline {
+            font-size: 18px;
+            font-weight: 400;
+            opacity: 0.9;
+        }
+        .hero-content .cat-badge {
+            display: inline-block;
+            background: var(--accent);
+            color: white;
+            padding: 6px 18px;
+            border-radius: 50px;
+            font-size: 12px;
+            font-weight: 700;
+            text-transform: uppercase;
+            margin-top: 14px;
+        }
+
+        /* Content Container */
+        .content-wrapper {
+            max-width: 1200px;
+            margin: -60px auto 60px;
+            padding: 0 30px;
+            position: relative;
+            z-index: 10;
+        }
+
+        /* Main Content Card */
+        .main-card {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.08);
+            overflow: hidden;
+        }
+
+        /* Generate Content CTA */
+        .generate-cta {
+            background: linear-gradient(135deg, #fff7ed 0%, #fef3c7 100%);
+            border: 2px dashed #f59e0b;
+            border-radius: 16px;
+            padding: 40px;
+            text-align: center;
+            margin: 30px;
+        }
+        .generate-cta h3 {
+            font-size: 22px;
+            font-weight: 700;
+            color: #92400e;
+            margin-bottom: 10px;
+        }
+        .generate-cta p {
+            color: #a16207;
+            margin-bottom: 20px;
+            font-size: 15px;
+        }
+        .generate-btn {
+            padding: 14px 36px;
+            background: linear-gradient(135deg, var(--accent) 0%, #c0392b 100%);
+            color: white;
+            border: none;
+            border-radius: 12px;
+            font-weight: 700;
+            font-size: 15px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+            box-shadow: 0 4px 15px rgba(231,76,60,0.3);
+        }
+        .generate-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(231,76,60,0.4);
+        }
+
+        /* Section Styles */
+        .section {
+            padding: 40px;
+            border-bottom: 1px solid #f1f5f9;
+        }
+        .section:last-child { border-bottom: none; }
+        .section-title {
+            font-size: 24px;
+            font-weight: 800;
+            color: var(--primary);
+            margin-bottom: 20px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .section-title .icon {
+            width: 40px;
+            height: 40px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 18px;
+            flex-shrink: 0;
+        }
+
+        /* Overview */
+        .overview-text {
+            font-size: 16px;
+            color: #475569;
+            line-height: 1.8;
+            white-space: pre-line;
+        }
+
+        /* Features Grid */
+        .features-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+            gap: 16px;
+        }
+        .feature-item {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+            padding: 20px 24px;
+            border-radius: 12px;
+            display: flex;
+            align-items: flex-start;
+            gap: 14px;
+            transition: all 0.3s ease;
+            border-left: 3px solid var(--primary-light);
+        }
+        .feature-item:hover {
+            transform: translateX(4px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.06);
+        }
+        .feature-check {
+            width: 24px;
+            height: 24px;
+            background: var(--primary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-size: 13px;
+            flex-shrink: 0;
+            margin-top: 2px;
+        }
+        .feature-text {
+            font-size: 14px;
+            color: #334155;
+            line-height: 1.6;
+            font-weight: 500;
+        }
+
+        /* Applications */
+        .apps-grid {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .app-tag {
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+            padding: 10px 22px;
+            border-radius: 50px;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s ease;
+        }
+        .app-tag:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(30,60,114,0.25);
+        }
+
+        /* Process Steps */
+        .process-timeline {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        .process-step {
+            background: white;
+            border: 2px solid #e2e8f0;
+            border-radius: 16px;
+            padding: 24px;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        .process-step:hover {
+            border-color: var(--primary-light);
+            box-shadow: 0 8px 25px rgba(30,60,114,0.1);
+            transform: translateY(-4px);
+        }
+        .step-number {
+            width: 36px;
+            height: 36px;
+            background: linear-gradient(135deg, var(--accent) 0%, #c0392b 100%);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 800;
+            font-size: 14px;
+            margin-bottom: 14px;
+        }
+        .step-title {
+            font-size: 16px;
+            font-weight: 700;
+            color: #1e293b;
+            margin-bottom: 8px;
+        }
+        .step-desc {
+            font-size: 13px;
+            color: #64748b;
+            line-height: 1.6;
+        }
+
+        /* Why Choose Us */
+        .why-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 16px;
+        }
+        .why-item {
+            background: linear-gradient(135deg, #ecfdf5 0%, #d1fae5 100%);
+            padding: 20px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            transition: all 0.3s ease;
+        }
+        .why-item:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 6px 20px rgba(16,185,129,0.15);
+        }
+        .why-check {
+            font-size: 20px;
+            flex-shrink: 0;
+        }
+        .why-text {
+            font-size: 14px;
+            color: #065f46;
+            font-weight: 600;
+            line-height: 1.5;
+        }
+
+        /* Tech Specs */
+        .tech-box {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            border-radius: 12px;
+            padding: 28px;
+            border-left: 4px solid var(--primary);
+        }
+        .tech-text {
+            font-size: 15px;
+            color: #475569;
+            line-height: 1.8;
+        }
+
+        /* Back Link */
+        .back-bar {
+            max-width: 1200px;
+            margin: 30px auto 0;
+            padding: 0 30px;
+        }
+        .back-link {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            color: white;
+            font-weight: 600;
+            font-size: 14px;
+            text-decoration: none;
+            background: rgba(255,255,255,0.2);
+            padding: 10px 20px;
+            border-radius: 10px;
+            backdrop-filter: blur(4px);
+            transition: all 0.3s ease;
+        }
+        .back-link:hover {
+            background: rgba(255,255,255,0.3);
+            transform: translateX(-4px);
+        }
+
+        /* Regenerate floating */
+        .regen-float {
+            position: fixed;
+            bottom: 30px;
+            right: 30px;
+            z-index: 100;
+        }
+        .regen-btn {
+            padding: 14px 24px;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%);
+            color: white;
+            border: none;
+            border-radius: 14px;
+            font-weight: 700;
+            font-size: 14px;
+            cursor: pointer;
+            box-shadow: 0 8px 30px rgba(30,60,114,0.35);
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .regen-btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 12px 40px rgba(30,60,114,0.45);
+        }
+
+        @media (max-width: 768px) {
+            .detail-hero { height: 300px; }
+            .detail-hero .hero-content { left: 20px; right: 20px; bottom: 30px; }
+            .hero-content h1 { font-size: 28px; }
+            .hero-content .tagline { font-size: 15px; }
+            .section { padding: 24px; }
+            .features-grid, .process-timeline, .why-grid { grid-template-columns: 1fr; }
+            .content-wrapper { padding: 0 16px; }
+        }
+    </style>
+</head>
+<body>
+
+    {% include 'navbar.html' %}
+
+    <!-- Hero Banner -->
+    <div class="detail-hero">
+        <img src="{{ service.image_url }}" alt="{{ service.name }}">
+        <div class="overlay"></div>
+        <div class="back-bar" style="position:absolute; top:30px; left:0; z-index:10;">
+            <a href="/services" class="back-link">← Back to Services</a>
+        </div>
+        <div class="hero-content">
+            <div class="breadcrumb">
+                <a href="/">Home</a> / <a href="/services">Services</a> / {{ service.name }}
+            </div>
+            <h1>{{ service.name }}</h1>
+            {% if content %}
+            <p class="tagline">{{ content.tagline }}</p>
+            {% else %}
+            <p class="tagline">{{ service.short_description }}</p>
+            {% endif %}
+            <span class="cat-badge">{{ service.icon }} {{ service.category }}</span>
+        </div>
+    </div>
+
+    <!-- Content -->
+    <div class="content-wrapper">
+        <div class="main-card">
+
+            {% if not content %}
+            <!-- No content yet — show generate CTA -->
+            <div class="generate-cta">
+                <h3>📝 Content Not Generated Yet</h3>
+                <p>Click the button below to auto-generate detailed professional content for this service using AI.</p>
+                <form action="/generate-service-content/{{ service.id }}" method="POST" style="display:inline;">
+                    <button type="submit" class="generate-btn">⚡ Generate Content Now</button>
+                </form>
+            </div>
+
+            <!-- Show basic info -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">📋</span> Overview
+                </h2>
+                <p class="overview-text">{{ service.short_description }}</p>
+            </div>
+
+            {% else %}
+            <!-- Full AI-generated content -->
+
+            <!-- Overview -->
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">📋</span> Overview
+                </h2>
+                <p class="overview-text">{{ content.overview }}</p>
+            </div>
+
+            <!-- Key Features -->
+            {% if content.key_features %}
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">⚡</span> Key Features
+                </h2>
+                <div class="features-grid">
+                    {% for feature in content.key_features %}
+                    <div class="feature-item">
+                        <div class="feature-check">✓</div>
+                        <span class="feature-text">{{ feature }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Applications -->
+            {% if content.applications %}
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">🏢</span> Applications
+                </h2>
+                <div class="apps-grid">
+                    {% for app in content.applications %}
+                    <span class="app-tag">{{ app }}</span>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Process Steps -->
+            {% if content.process_steps %}
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">🔄</span> Our Process
+                </h2>
+                <div class="process-timeline">
+                    {% for step in content.process_steps %}
+                    <div class="process-step">
+                        <div class="step-number">{{ loop.index }}</div>
+                        <div class="step-title">{{ step.step }}</div>
+                        <div class="step-desc">{{ step.description }}</div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Why Choose Us -->
+            {% if content.why_choose_us %}
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">🏆</span> Why Choose Trident?
+                </h2>
+                <div class="why-grid">
+                    {% for reason in content.why_choose_us %}
+                    <div class="why-item">
+                        <span class="why-check">✅</span>
+                        <span class="why-text">{{ reason }}</span>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Technical Standards -->
+            {% if content.technical_specs %}
+            <div class="section">
+                <h2 class="section-title">
+                    <span class="icon">📐</span> Technical Standards & Compliance
+                </h2>
+                <div class="tech-box">
+                    <p class="tech-text">{{ content.technical_specs }}</p>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Floating action buttons -->
+            <div class="regen-float" style="display: flex; gap: 10px; align-items: center;">
+                <a href="/generate-service-ppt/{{ service.id }}" class="regen-btn" style="text-decoration: none; background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%); box-shadow: 0 8px 30px rgba(34,197,94,0.35);">📥 Download PPT</a>
+                <form action="/generate-service-content/{{ service.id }}" method="POST">
+                    <button type="submit" class="regen-btn">🔄 Regenerate Content</button>
+                </form>
+            </div>
+
+            {% endif %}
+
+        </div>
+    </div>
+
+</body>
+</html>
