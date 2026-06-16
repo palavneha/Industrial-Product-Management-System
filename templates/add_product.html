@@ -1,9 +1,11 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Add Product - TRIDENT</title>
+    <link rel="icon" type="image/png" href="/static/favicon.png">
 
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
@@ -18,8 +20,7 @@
             Add New Product
         </h1>
 
-        <form method="POST"
-              enctype="multipart/form-data">
+        <form method="POST" enctype="multipart/form-data">
 
             <div class="grid lg:grid-cols-2 gap-8">
 
@@ -33,43 +34,20 @@
 
                     <div class="space-y-5">
 
-                        <input
-                            type="text"
-                            name="name"
-                            placeholder="Product Name"
-                            required
-                            class="w-full border rounded-lg p-3"
-                        >
+                        <input type="text" name="name" placeholder="Product Name" required
+                            class="w-full border rounded-lg p-3">
 
-                        <input
-                            type="text"
-                            name="category"
-                            placeholder="Product Category"
-                            required
-                            class="w-full border rounded-lg p-3"
-                        >
+                        <input type="text" name="category" placeholder="Product Category" required
+                            class="w-full border rounded-lg p-3">
 
-                        <textarea
-                            name="description"
-                            rows="5"
-                            placeholder="Product Description"
-                            required
-                            class="w-full border rounded-lg p-3"
-                        ></textarea>
+                        <textarea name="description" rows="5" placeholder="Product Description" required
+                            class="w-full border rounded-lg p-3"></textarea>
 
-                        <textarea
-                            name="features"
-                            rows="5"
-                            placeholder="Key Features"
-                            class="w-full border rounded-lg p-3"
-                        ></textarea>
+                        <textarea name="features" rows="5" placeholder="Key Features"
+                            class="w-full border rounded-lg p-3"></textarea>
 
-                        <textarea
-                            name="applications"
-                            rows="5"
-                            placeholder="Applications"
-                            class="w-full border rounded-lg p-3"
-                        ></textarea>
+                        <textarea name="applications" rows="5" placeholder="Applications"
+                            class="w-full border rounded-lg p-3"></textarea>
 
                     </div>
 
@@ -84,25 +62,18 @@
                     </h2>
 
                     <div
-                        class="border-2 border-dashed rounded-xl h-80 flex flex-col items-center justify-center text-gray-500"
-                    >
+                        class="border-2 border-dashed rounded-xl h-80 flex flex-col items-center justify-center text-gray-500">
 
                         <p class="mb-4">
                             Upload Product Image
                         </p>
 
-                        <input
-                            type="file"
-                            name="image"
-                            class="border rounded-lg p-2"
-                        >
+                        <input type="file" name="image" class="border rounded-lg p-2">
 
                     </div>
 
-                    <button
-                        type="submit"
-                        class="w-full mt-8 bg-blue-600 text-white py-4 rounded-xl text-lg font-semibold hover:bg-blue-700"
-                    >
+                    <button type="submit"
+                        class="w-full mt-8 bg-blue-600 text-white py-4 rounded-xl text-lg font-semibold hover:bg-blue-700">
                         Add Product
                     </button>
 
@@ -115,5 +86,5 @@
     </div>
 
 </body>
-</html>
 
+</html>

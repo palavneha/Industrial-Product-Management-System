@@ -1,22 +1,36 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Services — TRIDENT Engineers & Associates</title>
-    <meta name="description" content="Comprehensive electrical & engineering services by Trident Engineers — execution, design, audits, solar, fire alarm, IoT and more.">
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link rel="icon" type="image/png" href="/static/favicon.png">
+    <meta name="description"
+        content="Comprehensive electrical & engineering services by Trident Engineers — execution, design, audits, solar, fire alarm, IoT and more.">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap"
+        rel="stylesheet">
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         :root {
             --primary: #1e3c72;
             --primary-light: #2a5298;
             --accent: #e74c3c;
-            --glass-bg: rgba(255,255,255,0.7);
-            --card-shadow: 0 8px 32px rgba(30,60,114,0.10);
+            --glass-bg: rgba(255, 255, 255, 0.7);
+            --card-shadow: 0 8px 32px rgba(30, 60, 114, 0.10);
         }
-        * { margin: 0; padding: 0; box-sizing: border-box; }
-        body { font-family: 'Inter', sans-serif; background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%); min-height: 100vh; }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #f0f4f8 0%, #e2e8f0 100%);
+            min-height: 100vh;
+        }
 
         /* Hero Section */
         .hero-section {
@@ -26,12 +40,14 @@
             position: relative;
             overflow: hidden;
         }
+
         .hero-section::before {
             content: '';
             position: absolute;
             inset: 0;
             background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.04'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
         }
+
         .hero-title {
             font-size: 52px;
             font-weight: 900;
@@ -39,13 +55,15 @@
             letter-spacing: -1.5px;
             animation: slideDown 0.7s ease-out;
         }
+
         .hero-subtitle {
             font-size: 18px;
-            color: rgba(255,255,255,0.8);
+            color: rgba(255, 255, 255, 0.8);
             margin-top: 12px;
             font-weight: 400;
             animation: slideDown 0.9s ease-out;
         }
+
         .hero-divider {
             width: 80px;
             height: 4px;
@@ -66,6 +84,7 @@
             flex-wrap: wrap;
             padding: 0 20px;
         }
+
         .filter-btn {
             padding: 10px 24px;
             border: none;
@@ -75,15 +94,17 @@
             cursor: pointer;
             font-weight: 600;
             font-size: 14px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.08);
             transition: all 0.3s ease;
             font-family: 'Inter', sans-serif;
         }
-        .filter-btn:hover, .filter-btn.active {
+
+        .filter-btn:hover,
+        .filter-btn.active {
             background: var(--primary);
             color: white;
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(30,60,114,0.25);
+            box-shadow: 0 8px 25px rgba(30, 60, 114, 0.25);
         }
 
         /* Cards Grid */
@@ -102,7 +123,7 @@
             border-radius: 20px;
             overflow: hidden;
             box-shadow: var(--card-shadow);
-            transition: all 0.4s cubic-bezier(0.34,1.56,0.64,1);
+            transition: all 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
             cursor: pointer;
             position: relative;
             animation: fadeInUp 0.6s ease-out both;
@@ -110,33 +131,42 @@
             color: inherit;
             display: block;
         }
+
         .service-card:hover {
             transform: translateY(-12px);
-            box-shadow: 0 25px 60px rgba(30,60,114,0.18);
+            box-shadow: 0 25px 60px rgba(30, 60, 114, 0.18);
         }
+
         .service-card .img-wrap {
             width: 100%;
             height: 220px;
             overflow: hidden;
             position: relative;
         }
+
         .service-card .img-wrap img {
             width: 100%;
             height: 100%;
             object-fit: cover;
-            transition: transform 0.6s cubic-bezier(0.34,1.56,0.64,1);
+            transition: transform 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
         }
+
         .service-card:hover .img-wrap img {
             transform: scale(1.1);
         }
+
         .service-card .img-overlay {
             position: absolute;
             inset: 0;
-            background: linear-gradient(to bottom, transparent 40%, rgba(30,60,114,0.7) 100%);
+            background: linear-gradient(to bottom, transparent 40%, rgba(30, 60, 114, 0.7) 100%);
             opacity: 0;
             transition: opacity 0.4s ease;
         }
-        .service-card:hover .img-overlay { opacity: 1; }
+
+        .service-card:hover .img-overlay {
+            opacity: 1;
+        }
+
         .service-card .badge {
             position: absolute;
             top: 14px;
@@ -153,13 +183,16 @@
             transform: translateY(-8px);
             transition: all 0.4s ease;
         }
+
         .service-card:hover .badge {
             opacity: 1;
             transform: translateY(0);
         }
+
         .card-body {
             padding: 28px;
         }
+
         .card-icon {
             width: 48px;
             height: 48px;
@@ -172,10 +205,12 @@
             margin-bottom: 16px;
             transition: all 0.4s ease;
         }
+
         .service-card:hover .card-icon {
             transform: translateY(-6px) rotate(-5deg);
-            box-shadow: 0 12px 30px rgba(42,82,152,0.3);
+            box-shadow: 0 12px 30px rgba(42, 82, 152, 0.3);
         }
+
         .card-title {
             font-size: 20px;
             font-weight: 700;
@@ -184,18 +219,24 @@
             line-height: 1.3;
             transition: color 0.3s;
         }
-        .service-card:hover .card-title { color: var(--primary-light); }
+
+        .service-card:hover .card-title {
+            color: var(--primary-light);
+        }
+
         .card-desc {
             font-size: 14px;
             color: #64748b;
             line-height: 1.7;
             margin-bottom: 18px;
         }
+
         .card-status {
             display: flex;
             align-items: center;
             justify-content: space-between;
         }
+
         .status-dot {
             display: flex;
             align-items: center;
@@ -203,13 +244,21 @@
             font-size: 12px;
             font-weight: 600;
         }
+
         .status-dot .dot {
             width: 8px;
             height: 8px;
             border-radius: 50%;
         }
-        .status-dot .dot.green { background: #22c55e; }
-        .status-dot .dot.orange { background: #f97316; }
+
+        .status-dot .dot.green {
+            background: #22c55e;
+        }
+
+        .status-dot .dot.orange {
+            background: #f97316;
+        }
+
         .card-arrow {
             color: var(--primary-light);
             font-weight: 600;
@@ -219,7 +268,10 @@
             gap: 6px;
             transition: gap 0.3s ease;
         }
-        .service-card:hover .card-arrow { gap: 10px; }
+
+        .service-card:hover .card-arrow {
+            gap: 10px;
+        }
 
         /* Bulk Generate Button */
         .bulk-generate {
@@ -229,6 +281,7 @@
             display: flex;
             justify-content: flex-end;
         }
+
         .bulk-btn {
             padding: 12px 28px;
             background: linear-gradient(135deg, var(--accent) 0%, #c0392b 100%);
@@ -240,21 +293,37 @@
             cursor: pointer;
             transition: all 0.3s ease;
             font-family: 'Inter', sans-serif;
-            box-shadow: 0 4px 15px rgba(231,76,60,0.3);
+            box-shadow: 0 4px 15px rgba(231, 76, 60, 0.3);
         }
+
         .bulk-btn:hover {
             transform: translateY(-2px);
-            box-shadow: 0 8px 25px rgba(231,76,60,0.4);
+            box-shadow: 0 8px 25px rgba(231, 76, 60, 0.4);
         }
 
         /* Animations */
         @keyframes slideDown {
-            from { opacity: 0; transform: translateY(-30px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(-30px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
+
         @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(40px); }
-            to { opacity: 1; transform: translateY(0); }
+            from {
+                opacity: 0;
+                transform: translateY(40px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         /* PPT Download Button */
@@ -263,6 +332,7 @@
             overflow: hidden;
             box-shadow: var(--card-shadow);
         }
+
         .ppt-download-btn {
             display: block;
             text-align: center;
@@ -275,6 +345,7 @@
             transition: all 0.3s ease;
             font-family: 'Inter', sans-serif;
         }
+
         .ppt-download-btn:hover {
             background: linear-gradient(135deg, var(--primary-light) 0%, var(--primary) 100%);
             letter-spacing: 0.5px;
@@ -282,14 +353,32 @@
 
         /* Responsive */
         @media (max-width: 768px) {
-            .hero-title { font-size: 32px; }
-            .hero-subtitle { font-size: 15px; }
-            .services-grid { grid-template-columns: 1fr; padding: 0 16px 40px; }
-            .filter-bar { gap: 8px; margin-bottom: 24px; }
-            .filter-btn { padding: 8px 16px; font-size: 12px; }
+            .hero-title {
+                font-size: 32px;
+            }
+
+            .hero-subtitle {
+                font-size: 15px;
+            }
+
+            .services-grid {
+                grid-template-columns: 1fr;
+                padding: 0 16px 40px;
+            }
+
+            .filter-bar {
+                gap: 8px;
+                margin-bottom: 24px;
+            }
+
+            .filter-btn {
+                padding: 8px 16px;
+                font-size: 12px;
+            }
         }
     </style>
 </head>
+
 <body>
 
     {% include 'navbar.html' %}
@@ -311,7 +400,9 @@
 
     <!-- Bulk Generate + Download All PPT -->
     <div class="bulk-generate">
-        <a href="/generate-all-services-ppt" class="bulk-btn" style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%); text-decoration: none; margin-right: 12px; box-shadow: 0 4px 15px rgba(30,60,114,0.3);">📥 Download All Services PPT</a>
+        <a href="/generate-all-services-ppt" class="bulk-btn"
+            style="background: linear-gradient(135deg, var(--primary) 0%, var(--primary-light) 100%); text-decoration: none; margin-right: 12px; box-shadow: 0 4px 15px rgba(30,60,114,0.3);">📥
+            Download All Services PPT</a>
         <form action="/generate-all-content" method="POST">
             <input type="hidden" name="type" value="services">
             <button type="submit" class="bulk-btn">⚡ Auto-Generate All Content</button>
@@ -321,7 +412,8 @@
     <!-- Grid -->
     <div class="services-grid" id="servicesGrid">
         {% for s in services %}
-        <div class="service-card-wrapper" data-category="{{ s.category }}" style="animation: fadeInUp 0.6s ease-out both; animation-delay: {{ loop.index0 * 0.08 }}s">
+        <div class="service-card-wrapper" data-category="{{ s.category }}"
+            style="animation: fadeInUp 0.6s ease-out both; animation-delay: {{ loop.index0 * 0.08 }}s">
             <a href="/service/{{ s.id }}" class="service-card" style="margin-bottom: 0; border-radius: 20px 20px 0 0;">
                 <div class="img-wrap">
                     <img src="{{ s.image_url }}" alt="{{ s.name }}" loading="lazy">
@@ -334,9 +426,11 @@
                     <p class="card-desc">{{ s.short_description }}</p>
                     <div class="card-status">
                         {% if s.detailed_content %}
-                        <span class="status-dot" style="color:#22c55e;"><span class="dot green"></span> Content Ready</span>
+                        <span class="status-dot" style="color:#22c55e;"><span class="dot green"></span> Content
+                            Ready</span>
                         {% else %}
-                        <span class="status-dot" style="color:#f97316;"><span class="dot orange"></span> Needs Content</span>
+                        <span class="status-dot" style="color:#f97316;"><span class="dot orange"></span> Needs
+                            Content</span>
                         {% endif %}
                         <span class="card-arrow">View Details →</span>
                     </div>
@@ -365,4 +459,5 @@
     </script>
 
 </body>
+
 </html>
