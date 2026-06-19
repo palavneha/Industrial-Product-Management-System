@@ -1,5 +1,7 @@
 from app import db
 from app import CompanyProfile, FinancialYear, WorkExperience  # adjust import if these live in app.py directly
+from datetime import date
+
 
 def seed_database():
     profile = CompanyProfile(
