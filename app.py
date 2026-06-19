@@ -1826,11 +1826,11 @@ Respond ONLY in this exact JSON format:
 
 if __name__ == "__main__":
     with app.app_context():
-    db.create_all()
+        db.create_all()
 
-    from seed_company_data import seed_database
-    if CompanyProfile.query.first() is None:
-        seed_database()
+        from seed_company_data import seed_database
+        if CompanyProfile.query.first() is None:
+            seed_database()
 
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)

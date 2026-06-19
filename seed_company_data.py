@@ -68,4 +68,4 @@ def seed_database():
 
     
     db.session.commit()
-    print("Database reset and seeded successfully.")
+    print("Database seeded successfully.")
