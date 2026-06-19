@@ -783,11 +783,9 @@ def evaluate_technical_eligibility(sections, tender_value_crore):
     min_voltage_kv = parsed.get("min_voltage_kv") or 0
 
     print("=== TECHNICAL ELIGIBILITY DEBUG ===")
-    print("Definition text sent to Gemini:", repr(definition_text))
     print("Parsed allowed_items:", allowed_items)
     print("Parsed min_voltage_kv:", min_voltage_kv)
     if not allowed_items:
-        print("No allowed_items parsed (Gemini unavailable or definition empty) — cannot determine technical eligibility")
         return CriterionResult(
             category="Technical",
             name="Similar Work Experience",
@@ -1040,7 +1038,6 @@ def tender():
 
     dashboard = build_dashboard_data(sections)
 
-    # technical check — hybrid: constants + small Gemini call inside, no separate summarize step
     technical_result, definition_text = evaluate_technical_eligibility(sections, tender_value_crore)
 
     technical_display = {
@@ -1829,10 +1826,7 @@ Respond ONLY in this exact JSON format:
 
 if __name__ == "__main__":
     with app.app_context():
-
         db.create_all()
 
-    app.run(
-        debug=True,
-        use_reloader=False
-    )
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
