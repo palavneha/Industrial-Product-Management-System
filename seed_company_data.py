@@ -1,9 +1,7 @@
-from app import db
-from app import CompanyProfile, FinancialYear, WorkExperience  # adjust import if these live in app.py directly
 from datetime import date
 
 
-def seed_database():
+def seed_database(db, CompanyProfile, FinancialYear, WorkExperience):
     profile = CompanyProfile(
         electrical_contractor_license="EC-12345",
         contractor_class="A",
@@ -68,6 +66,5 @@ def seed_database():
         ),
     ])
 
-    
     db.session.commit()
     print("Database seeded successfully.")
