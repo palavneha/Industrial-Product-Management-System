@@ -17,7 +17,6 @@ from datetime import date, datetime, timedelta
 import json
 import os
 from groq import Groq
-import aspose.slides as slides
 import re
 from dataclasses import asdict
 
@@ -365,36 +364,36 @@ def edit_product(id):
     return render_template("edit_product.html", product=product)
 
 
-@app.route("/generate-ppt/<int:id>")
-def generate_ppt(id):
+# @app.route("/generate-ppt/<int:id>")
+# def generate_ppt(id):
 
-    product = Product.query.get_or_404(id)
+#     product = Product.query.get_or_404(id)
 
-    prs = Presentation()
+#     prs = Presentation()
 
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
-    slide.shapes.title.text = product.name
+#     slide = prs.slides.add_slide(prs.slide_layouts[0])
+#     slide.shapes.title.text = product.name
 
-    if len(slide.placeholders) > 1:
-        slide.placeholders[1].text = product.category
+#     if len(slide.placeholders) > 1:
+#         slide.placeholders[1].text = product.category
 
-    slide2 = prs.slides.add_slide(prs.slide_layouts[1])
-    slide2.shapes.title.text = "Description"
-    slide2.placeholders[1].text = product.description
+#     slide2 = prs.slides.add_slide(prs.slide_layouts[1])
+#     slide2.shapes.title.text = "Description"
+#     slide2.placeholders[1].text = product.description
 
-    slide3 = prs.slides.add_slide(prs.slide_layouts[1])
-    slide3.shapes.title.text = "Features"
-    slide3.placeholders[1].text = product.features
+#     slide3 = prs.slides.add_slide(prs.slide_layouts[1])
+#     slide3.shapes.title.text = "Features"
+#     slide3.placeholders[1].text = product.features
 
-    slide4 = prs.slides.add_slide(prs.slide_layouts[1])
-    slide4.shapes.title.text = "Applications"
-    slide4.placeholders[1].text = product.applications
+#     slide4 = prs.slides.add_slide(prs.slide_layouts[1])
+#     slide4.shapes.title.text = "Applications"
+#     slide4.placeholders[1].text = product.applications
 
-    filename = f"{product.name}.pptx"
+#     filename = f"{product.name}.pptx"
 
-    prs.save(filename)
+#     prs.save(filename)
 
-    return send_file(filename, as_attachment=True)
+#     return send_file(filename, as_attachment=True)
 
 def extract_pdf_text(pdf):
 
@@ -1330,474 +1329,475 @@ Respond ONLY in this exact JSON format:
     return redirect(request.referrer or "/services")
 
 
-def _replace_text_in_slide(slide, replacements):
-    def process_shapes(shapes):
-        for shape in shapes:
-            # Recurse into groups
-            if shape.shape_type == 6:  # MSO_SHAPE_TYPE.GROUP
-                process_shapes(shape.shapes)
-                continue
-            if not shape.has_text_frame:
-                continue
-            for para in shape.text_frame.paragraphs:
-                # Merge all runs to handle split placeholders
-                full_text = "".join(run.text for run in para.runs)
-                replaced = False
-                for placeholder, value in replacements.items():
-                    if placeholder in full_text:
-                        full_text = full_text.replace(placeholder, value)
-                        replaced = True
-                if replaced and para.runs:
-                    para.runs[0].text = full_text
-                    for run in para.runs[1:]:
-                        run.text = ""
-                elif not replaced:
-                    # Per-run replacement for non-split cases
-                    for run in para.runs:
-                        for placeholder, value in replacements.items():
-                            if placeholder in run.text:
-                                run.text = run.text.replace(placeholder, value)
+# def _replace_text_in_slide(slide, replacements):
+#     def process_shapes(shapes):
+#         for shape in shapes:
+#             # Recurse into groups
+#             if shape.shape_type == 6:  # MSO_SHAPE_TYPE.GROUP
+#                 process_shapes(shape.shapes)
+#                 continue
+#             if not shape.has_text_frame:
+#                 continue
+#             for para in shape.text_frame.paragraphs:
+#                 # Merge all runs to handle split placeholders
+#                 full_text = "".join(run.text for run in para.runs)
+#                 replaced = False
+#                 for placeholder, value in replacements.items():
+#                     if placeholder in full_text:
+#                         full_text = full_text.replace(placeholder, value)
+#                         replaced = True
+#                 if replaced and para.runs:
+#                     para.runs[0].text = full_text
+#                     for run in para.runs[1:]:
+#                         run.text = ""
+#                 elif not replaced:
+#                     # Per-run replacement for non-split cases
+#                     for run in para.runs:
+#                         for placeholder, value in replacements.items():
+#                             if placeholder in run.text:
+#                                 run.text = run.text.replace(placeholder, value)
 
-    process_shapes(slide.shapes)
+#     process_shapes(slide.shapes)
 
-def shorten_title(text, max_length=28):
+# def shorten_title(text, max_length=28):
 
-    if not text:
+#     if not text:
 
-        return ""
+#         return ""
 
-    text = text.strip()
+#     text = text.strip()
 
-    if len(text) <= max_length:
+#     if len(text) <= max_length:
 
-        return text
+#         return text
 
-    words = text.split()
+#     words = text.split()
 
-    result = ""
+#     result = ""
 
-    for word in words:
+#     for word in words:
 
-        candidate = result + " " + word if result else word
+#         candidate = result + " " + word if result else word
 
-        if len(candidate) > max_length - 3:
+#         if len(candidate) > max_length - 3:
 
-            break
+#             break
 
-        result = candidate
+#         result = candidate
 
-    return result + "..."
+#     return result + "..."
 
-def _replace_slide_image(slide, image_url, target_index=1):
-    import requests
+# def _replace_slide_image(slide, image_url, target_index=1):
+#     import requests
 
-    try:
+#     try:
 
-        response = requests.get(image_url, timeout=10)
+#         response = requests.get(image_url, timeout=10)
 
-        response.raise_for_status()
+#         response.raise_for_status()
 
-        image_bytes = response.content
+#         image_bytes = response.content
 
-        pictures = []
+#         pictures = []
 
-        for shape in slide.shapes:
+#         for shape in slide.shapes:
 
-            if shape.shape_type == 13:   # Picture
+#             if shape.shape_type == 13:   # Picture
 
-                area = shape.width * shape.height
+#                 area = shape.width * shape.height
 
-                pictures.append((area, shape))
+#                 pictures.append((area, shape))
 
-        if not pictures:
+#         if not pictures:
 
-            print("No pictures found.")
+#             print("No pictures found.")
 
-            return
+#             return
 
-        # Ignore the logo by choosing the largest picture
+#         # Ignore the logo by choosing the largest picture
 
-        pictures.sort(reverse=True)
+#         pictures.sort(reverse=True)
 
-        picture = pictures[0][1]
+#         picture = pictures[0][1]
 
-        blips = picture._element.findall(
-            ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
-        )
+#         blips = picture._element.findall(
+#             ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
+#         )
 
-        if not blips:
+#         if not blips:
 
-            return
+#             return
 
-        r_embed_attr = (
-            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-        )
-
-        rId = blips[0].get(r_embed_attr)
-
-        if rId and rId in slide.part.rels:
-
-            slide.part.rels[rId].target_part._blob = image_bytes
-
-            print("Image replaced.")
-
-    except Exception as e:
+#         r_embed_attr = (
+#             "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
+#         )
+
+#         rId = blips[0].get(r_embed_attr)
+
+#         if rId and rId in slide.part.rels:
+
+#             slide.part.rels[rId].target_part._blob = image_bytes
+
+#             print("Image replaced.")
+
+#     except Exception as e:
 
-        print(e)
+#         print(e)
 
-@app.route("/generate-service-ppt/<int:id>")
-def generate_service_ppt(id):
-    """Generate a PPT for a single service using the Brand Strategy template (Slide 6)."""
-    service = Service.query.get_or_404(id)
+# @app.route("/generate-service-ppt/<int:id>")
+# def generate_service_ppt(id):
+#     """Generate a PPT for a single service using the Brand Strategy template (Slide 6)."""
+#     service = Service.query.get_or_404(id)
 
-    content = None
-    if service.detailed_content:
-        try:
-            content = json.loads(service.detailed_content)
-        except:
-            content = None
+#     content = None
+#     if service.detailed_content:
+#         try:
+#             content = json.loads(service.detailed_content)
+#         except:
+#             content = None
 
-    service_name = service.name
-    overview_text = content["overview"] if content and content.get("overview") else (service.short_description or "")
-    services_text = "\n".join([f"- {f}" for f in content["key_features"]]) if content and content.get("key_features") else (service.short_description or "")
-    why_text = "\n".join([f"- {r}" for r in content["why_choose_us"]]) if content and content.get("why_choose_us") else "- Professional team\n- Quality workmanship\n- Indian standards compliance\n- End-to-end project management"
+#     service_name = service.name
+#     overview_text = content["overview"] if content and content.get("overview") else (service.short_description or "")
+#     services_text = "\n".join([f"- {f}" for f in content["key_features"]]) if content and content.get("key_features") else (service.short_description or "")
+#     why_text = "\n".join([f"- {r}" for r in content["why_choose_us"]]) if content and content.get("why_choose_us") else "- Professional team\n- Quality workmanship\n- Indian standards compliance\n- End-to-end project management"
 
-    template_path = os.path.join("templates", "Brand Strategy.pptx")
-    prs = Presentation(template_path)
-    slide = prs.slides[5]  # Slide 6 = service template
+#     template_path = os.path.join("templates", "Brand Strategy.pptx")
+#     prs = Presentation(template_path)
+#     slide = prs.slides[5]  # Slide 6 = service template
 
-    _replace_text_in_slide(slide, {
-        "{{SERVICE_NAME}}": service_name,
-        "{{SERVICE_OVERVIEW}}": overview_text,
-        "{{THE_SERVICES}}": services_text,
-        "{{WHY_CHOOSE_US}}": why_text,
-    })
+#     _replace_text_in_slide(slide, {
+#         "{{SERVICE_NAME}}": service_name,
+#         "{{SERVICE_OVERVIEW}}": overview_text,
+#         "{{THE_SERVICES}}": services_text,
+#         "{{WHY_CHOOSE_US}}": why_text,
+#     })
 
-    #if service.image_url:
-        #replace_slide_image(slide, service.image_url)
+#     #if service.image_url:
+#         #replace_slide_image(slide, service.image_url)
 
-    # Clear manufacturing placeholders on slide 7 so they don't appear raw
-    _replace_text_in_slide(prs.slides[6], {
-        "{{MANUFACTURING_NAME}}": "",
-        "{{MANUFACTURING_OVERVIEW}}": "",
-    })
+#     # Clear manufacturing placeholders on slide 7 so they don't appear raw
+#     _replace_text_in_slide(prs.slides[6], {
+#         "{{MANUFACTURING_NAME}}": "",
+#         "{{MANUFACTURING_OVERVIEW}}": "",
+#     })
 
-    safe_name = service.name.replace("/", "-").replace("\\", "-").replace(":", "-").strip()
-    filename = f"{safe_name}_Service.pptx"
-    output_path = os.path.join("static", "uploads", filename)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    prs.save(output_path)
-    return send_file(output_path, as_attachment=True, download_name=filename)
+#     safe_name = service.name.replace("/", "-").replace("\\", "-").replace(":", "-").strip()
+#     filename = f"{safe_name}_Service.pptx"
+#     output_path = os.path.join("static", "uploads", filename)
+#     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+#     prs.save(output_path)
+#     return send_file(output_path, as_attachment=True, download_name=filename)
 
 
-@app.route("/generate-manufacturing-ppt/<int:id>")
-def generate_manufacturing_ppt(id):
-    """Generate a PPT for a single manufacturing product using the Brand Strategy template (Slide 7)."""
-    import requests as req_lib
+# @app.route("/generate-manufacturing-ppt/<int:id>")
+# def generate_manufacturing_ppt(id):
+#     """Generate a PPT for a single manufacturing product using the Brand Strategy template (Slide 7)."""
+#     import requests as req_lib
 
-    product = ManufacturingProduct.query.get_or_404(id)
+#     product = ManufacturingProduct.query.get_or_404(id)
 
-    content = None
-    if product.detailed_content:
-        try:
-            content = json.loads(product.detailed_content)
-        except:
-            content = None
+#     content = None
+#     if product.detailed_content:
+#         try:
+#             content = json.loads(product.detailed_content)
+#         except:
+#             content = None
 
-    mfg_name = product.name
-    overview_text = content["overview"] if content and content.get("overview") else (product.short_description or "")
+#     mfg_name = product.name
+#     overview_text = content["overview"] if content and content.get("overview") else (product.short_description or "")
 
-    template_path = os.path.join("templates", "Brand Strategy.pptx")
-    prs = Presentation(template_path)
-    slide = prs.slides[6]  # Slide 7 = manufacturing template
+#     template_path = os.path.join("templates", "Brand Strategy.pptx")
+#     prs = Presentation(template_path)
+#     slide = prs.slides[6]  # Slide 7 = manufacturing template
 
-    _replace_text_in_slide(slide, {
-        "{{MANUFACTURING_NAME}}": mfg_name,
-        "{{MANUFACTURING_OVERVIEW}}": overview_text,
-    })
+#     _replace_text_in_slide(slide, {
+#         "{{MANUFACTURING_NAME}}": mfg_name,
+#         "{{MANUFACTURING_OVERVIEW}}": overview_text,
+#     })
 
-    #if product.image_url:
-    #    _replace_slide_image(slide, product.image_url, target_index=1)
+#     #if product.image_url:
+#     #    _replace_slide_image(slide, product.image_url, target_index=1)
 
-    # Clear service placeholders on slide 6
-    _replace_text_in_slide(prs.slides[5], {
-        "{{SERVICE_NAME}}": "",
-        "{{SERVICE_OVERVIEW}}": "",
-        "{{THE_SERVICES}}": "",
-        "{{WHY_CHOOSE_US}}": "",
-    })
+#     # Clear service placeholders on slide 6
+#     _replace_text_in_slide(prs.slides[5], {
+#         "{{SERVICE_NAME}}": "",
+#         "{{SERVICE_OVERVIEW}}": "",
+#         "{{THE_SERVICES}}": "",
+#         "{{WHY_CHOOSE_US}}": "",
+#     })
 
-    safe_name = product.name.replace("/", "-").replace("\\", "-").replace(":", "-").strip()
-    filename = f"{safe_name}_Manufacturing.pptx"
-    output_path = os.path.join("static", "uploads", filename)
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    prs.save(output_path)
-    return send_file(output_path, as_attachment=True, download_name=filename)
+#     safe_name = product.name.replace("/", "-").replace("\\", "-").replace(":", "-").strip()
+#     filename = f"{safe_name}_Manufacturing.pptx"
+#     output_path = os.path.join("static", "uploads", filename)
+#     os.makedirs(os.path.dirname(output_path), exist_ok=True)
+#     prs.save(output_path)
+#     return send_file(output_path, as_attachment=True, download_name=filename)
 
-@app.route("/generate-custom-ppt", methods=["POST"])
-def generate_custom_ppt():
+# @app.route("/generate-custom-ppt", methods=["POST"])
+# def generate_custom_ppt():
 
-    import aspose.slides as slides
+#     import aspose.slides as slides
 
-    service_ids = request.form.getlist("service_ids")
+#     service_ids = request.form.getlist("service_ids")
 
-    product_ids = request.form.getlist("product_ids")
+#     product_ids = request.form.getlist("product_ids")
 
-    if not service_ids and not product_ids:
+#     if not service_ids and not product_ids:
 
-        return redirect(
-            request.referrer or "/build-ppt"
-        )
+#         return redirect(
+#             request.referrer or "/build-ppt"
+#         )
 
-    template_path = os.path.join(
-        "templates",
-        "Brand Strategy.pptx"
-    )
+#     template_path = os.path.join(
+#         "templates",
+#         "Brand Strategy.pptx"
+#     )
 
-    pres = slides.Presentation(template_path)
+#     pres = slides.Presentation(template_path)
 
-    SERVICE_TEMPLATE = 5
-    MANUFACTURING_TEMPLATE = 6
+#     SERVICE_TEMPLATE = 5
+#     MANUFACTURING_TEMPLATE = 6
 
-    insert_position = 7
+#     insert_position = 7
 
-    for sid in service_ids:
+#     for sid in service_ids:
 
-        service = Service.query.get(int(sid))
+#         service = Service.query.get(int(sid))
 
-        if not service:
+#         if not service:
 
-            continue
+#             continue
 
-        content = None
+#         content = None
 
-        if service.detailed_content:
+#         if service.detailed_content:
 
-            try:
+#             try:
 
-                content = json.loads(
-                    service.detailed_content
-                )
+#                 content = json.loads(
+#                     service.detailed_content
+#                 )
 
-            except:
+#             except:
 
-                content = None
+#                 content = None
 
-        new_slide = pres.slides.insert_clone(
-            insert_position,
-            pres.slides[SERVICE_TEMPLATE]
-        )
+#         new_slide = pres.slides.insert_clone(
+#             insert_position,
+#             pres.slides[SERVICE_TEMPLATE]
+#         )
 
-        insert_position += 1
+#         insert_position += 1
 
-        overview = (
-            content["overview"]
+#         overview = (
+#             content["overview"]
 
-            if content and content.get("overview")
+#             if content and content.get("overview")
 
-            else service.short_description or ""
-        )
+#             else service.short_description or ""
+#         )
 
-        services = (
-            "\n".join(
-                [
-                    f"• {x}"
+#         services = (
+#             "\n".join(
+#                 [
+#                     f"• {x}"
 
-                    for x in content["key_features"]
-                ]
-            )
+#                     for x in content["key_features"]
+#                 ]
+#             )
 
-            if content and content.get("key_features")
+#             if content and content.get("key_features")
 
-            else ""
-        )
+#             else ""
+#         )
 
-        why = (
-            "\n".join(
-                [
-                    f"✓ {x}"
+#         why = (
+#             "\n".join(
+#                 [
+#                     f"✓ {x}"
 
-                    for x in content["why_choose_us"]
-                ]
-            )
+#                     for x in content["why_choose_us"]
+#                 ]
+#             )
 
-            if content and content.get("why_choose_us")
+#             if content and content.get("why_choose_us")
 
-            else ""
-        )
+#             else ""
+#         )
 
-        replacements = {
+#         replacements = {
 
-            "{{SERVICE_NAME}}":
-            shorten_title(service.name),
+#             "{{SERVICE_NAME}}":
+#             shorten_title(service.name),
 
-            "{{SERVICE_OVERVIEW}}":
-            overview,
+#             "{{SERVICE_OVERVIEW}}":
+#             overview,
 
-            "{{THE_SERVICES}}":
-            services,
+#             "{{THE_SERVICES}}":
+#             services,
 
-            "{{WHY_CHOOSE_US}}":
-            why,
+#             "{{WHY_CHOOSE_US}}":
+#             why,
 
-        }
+#         }
 
-        for shape in new_slide.shapes:
+#         for shape in new_slide.shapes:
 
-            if hasattr(shape, "text_frame"):
+#             if hasattr(shape, "text_frame"):
 
-                if shape.text_frame:
+#                 if shape.text_frame:
 
-                    text = shape.text_frame.text
+#                     text = shape.text_frame.text
 
-                    for old, new in replacements.items():
+#                     for old, new in replacements.items():
 
-                        text = text.replace(
-                            old,
-                            new
-                        )
+#                         text = text.replace(
+#                             old,
+#                             new
+#                         )
 
-                    shape.text_frame.text = text
+#                     shape.text_frame.text = text
 
-    for pid in product_ids:
+#     for pid in product_ids:
 
-        product = ManufacturingProduct.query.get(
-            int(pid)
-        )
+#         product = ManufacturingProduct.query.get(
+#             int(pid)
+#         )
 
-        if not product:
+#         if not product:
 
-            continue
+#             continue
 
-        content = None
+#         content = None
 
-        if product.detailed_content:
+#         if product.detailed_content:
 
-            try:
+#             try:
 
-                content = json.loads(
-                    product.detailed_content
-                )
+#                 content = json.loads(
+#                     product.detailed_content
+#                 )
 
-            except:
+#             except:
 
-                content = None
+#                 content = None
 
-        new_slide = pres.slides.insert_clone(
-            insert_position,
-            pres.slides[MANUFACTURING_TEMPLATE]
-        )
+#         new_slide = pres.slides.insert_clone(
+#             insert_position,
+#             pres.slides[MANUFACTURING_TEMPLATE]
+#         )
 
-        insert_position += 1
+#         insert_position += 1
 
-        overview = (
-            content["overview"]
+#         overview = (
+#             content["overview"]
 
-            if content and content.get("overview")
+#             if content and content.get("overview")
 
-            else product.short_description or ""
-        )
+#             else product.short_description or ""
+#         )
 
-        replacements = {
+#         replacements = {
 
-            "{{MANUFACTURING_NAME}}":
-            shorten_title(product.name),
+#             "{{MANUFACTURING_NAME}}":
+#             shorten_title(product.name),
 
-            "{{MANUFACTURING_OVERVIEW}}":
-            overview,
+#             "{{MANUFACTURING_OVERVIEW}}":
+#             overview,
 
-        }
+#         }
 
-        for shape in new_slide.shapes:
+#         for shape in new_slide.shapes:
 
-            if hasattr(shape, "text_frame"):
+#             if hasattr(shape, "text_frame"):
 
-                if shape.text_frame:
+#                 if shape.text_frame:
 
-                    text = shape.text_frame.text
+#                     text = shape.text_frame.text
 
-                    for old, new in replacements.items():
+#                     for old, new in replacements.items():
 
-                        text = text.replace(
-                            old,
-                            new
-                        )
+#                         text = text.replace(
+#                             old,
+#                             new
+#                         )
 
-                    shape.text_frame.text = text
+#                     shape.text_frame.text = text
 
-    pres.slides.remove_at(
-        MANUFACTURING_TEMPLATE
-    )
+#     pres.slides.remove_at(
+#         MANUFACTURING_TEMPLATE
+#     )
 
-    pres.slides.remove_at(
-        SERVICE_TEMPLATE
-    )
+#     pres.slides.remove_at(
+#         SERVICE_TEMPLATE
+#     )
 
-    filename = (
-        "Trident_Custom_Selection.pptx"
-    )
+#     filename = (
+#         "Trident_Custom_Selection.pptx"
+#     )
 
-    output_path = os.path.join(
+#     output_path = os.path.join(
 
-        "static",
+#         "static",
 
-        "uploads",
+#         "uploads",
 
-        filename
+#         filename
 
-    )
+#     )
 
-    pres.save(
+#     pres.save(
 
-        output_path,
+#         output_path,
 
-        slides.export.SaveFormat.PPTX
+#         slides.export.SaveFormat.PPTX
 
-    )
+#     )
 
-    return send_file(
+#     return send_file(
 
-        output_path,
+#         output_path,
 
-        as_attachment=True,
+#         as_attachment=True,
 
-        download_name=filename
+#         download_name=filename
 
-    )
-@app.route("/build-ppt")
-def build_ppt_picker():
+#     )
+# @app.route("/build-ppt")
+# def build_ppt_picker():
 
-    all_services = Service.query.all()
+#     all_services = Service.query.all()
 
-    all_products = ManufacturingProduct.query.all()
+#     all_products = ManufacturingProduct.query.all()
 
-    return render_template(
-        "build_ppt.html",
-        services=all_services,
-        products=all_products
-    )
-@app.route("/test-ppt")
-def test_ppt():
+#     return render_template(
+#         "build_ppt.html",
+#         services=all_services,
+#         products=all_products
+#     )
+# @app.route("/test-ppt")
+# def test_ppt():
 
-    template_path = os.path.join(
-        "templates",
-        "Brand Strategy.pptx"
-    )
+#     template_path = os.path.join(
+#         "templates",
+#         "Brand Strategy.pptx"
+#     )
 
-    prs = Presentation(template_path)
+#     prs = Presentation(template_path)
 
-    output_path = os.path.join(
-        "static",
-        "uploads",
-        "test_output.pptx"
-    )
+#     output_path = os.path.join(
+#         "static",
+#         "uploads",
+#         "test_output.pptx"
+#     )
 
-    prs.save(output_path)
+#     prs.save(output_path)
 
-    return send_file(
-        output_path,
-        as_attachment=True
-    )
+#     return send_file(
+#         output_path,
+#         as_attachment=True
+#     )
+
 if __name__ == "__main__":
     with app.app_context():
 
