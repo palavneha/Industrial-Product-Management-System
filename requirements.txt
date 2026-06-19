@@ -11,3 +11,4 @@ groq
 requests
 gunicorn
 aspose-slides
+google-generativeai
