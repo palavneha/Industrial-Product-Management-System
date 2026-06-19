@@ -1,27 +1,24 @@
-# Python virtual environment
+# Virtual env
 .venv/
 venv/
+
+# Database
+*.db
+instance/
+
+# Generated files
+*.pptx
+*.pdf
+
+# Temp Office files
+~$*
+
+# Uploads
+static/uploads/
 
 # Python cache
 __pycache__/
 *.pyc
 
-# Environment variables
+# Secrets
 .env
-
-# Uploaded/generated files
-static/uploads/
-
-# Generated presentations
-*.pptx
-
-# Generated PDFs
-*.pdf
-
-# Database files (if applicable)
-*.db
-instance/
-
-# OS files
-.DS_Store
-Thumbs.db
