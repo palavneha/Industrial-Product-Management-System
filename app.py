@@ -1,7 +1,7 @@
 from flask import request, render_template, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 from dataclasses import asdict
-import google.generativeai as genai
+#import google.generativeai as genai
 from flask import Flask, json, render_template, request, redirect
 from flask_sqlalchemy import SQLAlchemy, session
 from sqlalchemy import or_, text
@@ -37,7 +37,7 @@ class CriterionResult:
 
     eligible: bool
 #pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+#genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 
@@ -901,78 +901,25 @@ def parse_gemini(response):
     
 def summarize_technical_criteria(technical):
 
-    model = genai.GenerativeModel(
-        "gemini-2.5-flash"
-    )
+    return {
+        "lookback_period_years": 7,
 
-    prompt = f"""
-You are a tender eligibility extractor.
+        "similar_work_options": [],
 
-Analyze this tender technical criteria.
+        "similar_work_definition": {
 
-Extract:
+            "allowed_work_types": [],
 
-- years_of_experience
-- similar_work_options
-- similar_work_definition
-- mandatory_conditions
+            "allowed_equipment_combos": [],
 
-Return ONLY JSON.
+            "min_voltage_kv": 0
 
-Example:
+        },
 
-{{
- "lookback_period_years":7,
+        "certificate_rules": {},
 
- "similar_work_options":[
-
-   {{
-      "min_count":3,
-
-      "min_percent_of_tender_value":30
-   }},
-
-   {{
-      "min_count":2,
-
-      "min_percent_of_tender_value":40
-   }},
-
-   {{
-      "min_count":1,
-
-      "min_percent_of_tender_value":60
-   }}
-
- ],
-
- "similar_work_definition":{{
-
-   "allowed_work_types":[],
-
-   "allowed_equipment_combos":[],
-
-   "min_voltage_kv":0
-
- }},
-
- "certificate_rules":{{}},
-
- "mandatory_conditions":[]
-}}
-
-Tender text:
-
-{technical}
-
-Return JSON only.
-"""
-
-    response = model.generate_content(
-        prompt
-    )
-
-    return response.text
+        "mandatory_conditions": []
+    }
 
 @app.route("/tender", methods=["GET", "POST"])
 def tender():
@@ -1013,9 +960,9 @@ def tender():
 
     technical_section_text = sections.get("Special Technical Criteria","")
 
-    gemini_response = summarize_technical_criteria(technical_section_text)
-
-    technical_json = parse_gemini(gemini_response)
+    technical_json = summarize_technical_criteria(
+        technical_section_text
+    )
 
     technical_result = evaluate_technical_eligibility(technical_json,tender_value_crore)
 
