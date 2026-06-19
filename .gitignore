@@ -1,20 +1,27 @@
-.env
-.env.txt
-__pycache__/
-*.pyc
-venv/
+# Python virtual environment
 .venv/
+venv/
 
+# Python cache
 __pycache__/
 *.pyc
 
-node_modules/
+# Environment variables
+.env
 
-uploads/
+# Uploaded/generated files
+static/uploads/
+
+# Generated presentations
+*.pptx
+
+# Generated PDFs
+*.pdf
+
+# Database files (if applicable)
+*.db
 instance/
 
-*.pdf
-*.pptx
-*.docx
-
-.env
+# OS files
+.DS_Store
+Thumbs.db
