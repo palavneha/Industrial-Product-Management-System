@@ -1,5 +1,9 @@
+from flask import request, render_template, redirect, url_for, flash
+from werkzeug.utils import secure_filename
+from dataclasses import asdict
+import google.generativeai as genai
 from flask import Flask, json, render_template, request, redirect
-from flask_sqlalchemy import SQLAlchemy
+from flask_sqlalchemy import SQLAlchemy, session
 from sqlalchemy import or_, text
 from werkzeug.utils import secure_filename
 from pptx import Presentation
@@ -9,16 +13,32 @@ from dotenv import load_dotenv
 import pytesseract
 from PIL import Image
 import io
-from datetime import datetime
+from datetime import date, datetime, timedelta
 import json
 import os
 from groq import Groq
 import aspose.slides as slides
+import re
+from dataclasses import asdict
+
 
 load_dotenv()
+from dataclasses import dataclass
 
+@dataclass
+class CriterionResult:
+
+    category: str
+
+    name: str
+
+    required: str
+
+    actual: str
+
+    eligible: bool
 #pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 
@@ -31,6 +51,107 @@ app.config["SQLALCHEMY_DATABASE_URI"] = "sqlite:///products.db"
 app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
 db = SQLAlchemy(app)
 
+class FinancialYear(db.Model):
+    __tablename__ = "financial_year"
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("company_profile.id"), nullable=False)
+    financial_year_end = db.Column(db.Integer, nullable=False)  # e.g. 2024 = FY 2023-24
+    annual_turnover_crore = db.Column(db.Float, nullable=False)
+    net_worth_crore = db.Column(db.Float)
+    working_capital_crore = db.Column(db.Float)
+
+    company = db.relationship("CompanyProfile", backref="financial_years")
+
+class CompanyProfile(db.Model):
+
+    __tablename__ = "company_profile"
+
+    id = db.Column(
+
+        db.Integer,
+
+        primary_key=True
+
+    )
+
+    electrical_contractor_license = db.Column(
+
+        db.String(100)
+
+    )
+
+    contractor_class = db.Column(
+
+        db.String(50)
+
+    )
+
+    established_year = db.Column(
+
+        db.Integer
+
+    )
+
+    entity_type = db.Column(
+        
+        db.String(50)
+        
+    )   # Proprietary / Company / Partnership / JV / Society / Trust / HUF / LLP
+    
+    pan_number = db.Column(
+        
+        db.String(20)
+        
+    )
+
+class WorkExperience(db.Model):
+    __tablename__ = "work_experience"
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("company_profile.id"), nullable=False)
+    project_name = db.Column(db.String(200))
+    work_value_crore = db.Column(db.Float, nullable=False)
+    completion_date = db.Column(db.Date, nullable=False)
+    is_substantially_completed = db.Column(db.Boolean, default=False)
+    work_type = db.Column(db.String(50))
+    equipment_combo = db.Column(db.String(100))
+    voltage_class_kv = db.Column(db.Float)
+    certificate_issuer_type = db.Column(db.String(30))
+    issuer_avg_turnover_3yr_crore = db.Column(db.Float)
+    issuer_listed_nse = db.Column(db.Boolean, default=False)
+    issuer_listed_bse = db.Column(db.Boolean, default=False)
+    issuer_incorporation_date = db.Column(db.Date)
+    has_work_order_copy = db.Column(db.Boolean, default=False)
+    has_boq = db.Column(db.Boolean, default=False)
+    has_ca_certified_payment_details = db.Column(db.Boolean, default=False)
+    has_tds_certificates = db.Column(db.Boolean, default=False)
+    has_final_bill_copy = db.Column(db.Boolean, default=False)
+
+    company = db.relationship("CompanyProfile", backref="work_experiences")
+
+class CompanyDocument(db.Model):
+    __tablename__ = "company_document"
+    id = db.Column(db.Integer, primary_key=True)
+    company_id = db.Column(db.Integer, db.ForeignKey("company_profile.id"), nullable=False)
+    document_type = db.Column(db.String(50), nullable=False)
+    has_document = db.Column(db.Boolean, default=False)
+    document_number = db.Column(db.String(100))
+    issuing_authority = db.Column(db.String(150))
+    valid_from = db.Column(db.Date)
+    valid_until = db.Column(db.Date)
+    file_path = db.Column(db.String(255))
+
+    company = db.relationship("CompanyProfile", backref="documents")
+
+class TenderComplianceRequirement(db.Model):
+    __tablename__ = "tender_compliance_requirement"
+    id = db.Column(db.Integer, primary_key=True)
+    tender_history_id = db.Column(db.Integer, db.ForeignKey("tender_history.id"), nullable=False)
+    section = db.Column(db.String(100))          # Commercial-Compliance / Technical-Compliances / Undertakings / etc.
+    description = db.Column(db.Text)
+    documents_uploading = db.Column(db.String(30))   # "Mandatory" / "Optional" / "Not Allowed"
+    requirement_type = db.Column(db.String(50))   # normalized tag, matched against CompanyDocument.document_type; null for boilerplate items
+
+    tender = db.relationship("TenderHistory", backref="compliance_requirements")
 
 class Product(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -41,13 +162,72 @@ class Product(db.Model):
     applications = db.Column(db.Text)
     image_path = db.Column(db.String(255))
 
-
 class TenderHistory(db.Model):
-    id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(255))
-    summary = db.Column(db.Text)
-    matched_products = db.Column(db.Text)  # stored as JSON string
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    id = db.Column(
+        db.Integer,
+        primary_key=True
+    )
+
+    filename = db.Column(
+        db.String(255),
+        nullable=False
+    )
+
+    tender_name = db.Column(
+        db.String(300)
+    )
+
+    tender_value_crore = db.Column(
+        db.Float
+    )
+
+    summary = db.Column(
+        db.Text
+    )
+
+    eligibility_verdict = db.Column(
+        db.String(50)
+    )
+
+    verdict_reason = db.Column(
+        db.Text
+    )
+
+    recommended_action = db.Column(
+        db.Text
+    )
+
+    eligibility_criteria = db.Column(
+        db.Text
+    )
+
+    matched_products = db.Column(
+        db.Text
+    )
+
+    created_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow
+    )
+
+    tender_number = db.Column(
+        
+        db.String(100)
+        
+    )
+    
+    tender_closing_date = db.Column(
+        
+        db.DateTime
+        
+    )
+    
+    local_content_percent = db.Column(
+        
+        db.Float
+        
+    )   # manually declared per bid, not derived from company data
 
 
 class Service(db.Model):
@@ -70,6 +250,11 @@ class ManufacturingProduct(db.Model):
     category = db.Column(db.String(100))
     link = db.Column(db.String(500))
 
+ENTITY_CERT_RULES = {
+    "PARTNERSHIP_JV_HUF_LLP_CERTIFICATE": {"Partnership", "JV", "HUF", "LLP"},
+    "SOLE_PROPRIETOR_UNDERTAKING": {"Proprietary"},
+    "ANNEXURE_V_A": {"Partnership", "JV", "Society", "Trust", "HUF", "LLP"},
+}
 
 @app.route("/")
 def home():
@@ -211,329 +396,665 @@ def generate_ppt(id):
 
     return send_file(filename, as_attachment=True)
 
+def extract_pdf_text(pdf):
 
-@app.route("/tender", methods=["GET", "POST"])
-def tender():
-    if request.method == "POST":
-        pdf = request.files["tender_pdf"]
-        filename = secure_filename(pdf.filename)
-        path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        pdf.save(path)
+    text = ""
 
-        # Extract text via OCR
-        doc = fitz.open(path)
-        full_text = ""
-        for page in doc:
-            text = page.get_text()
-            if text.strip():
-                full_text += text
-            else:
-                pix = page.get_pixmap(dpi=300)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                full_text += pytesseract.image_to_string(img)
+    doc = fitz.open(
+        stream=pdf.read(),
 
-        # Get all products from DB
-        all_products = Product.query.all()
-        product_list = "\n".join(
-            [
-                f"- {p.name} ({p.category}): {p.description} | Features: {p.features} | Applications: {p.applications}"
-                for p in all_products
-            ]
-        )
-
-        # Get company data
-        from sqlalchemy import text as sqla_text
-
-        profile = db.session.execute(
-            sqla_text("SELECT * FROM company_profile WHERE id=1")
-        ).fetchone()
-        certs = db.session.execute(sqla_text("SELECT * FROM certifications")).fetchall()
-        projects = db.session.execute(
-            sqla_text("SELECT * FROM past_projects ORDER BY value_crore DESC")
-        ).fetchall()
-
-        cert_list = "\n".join(
-            [f"- {c.name} (valid until {c.valid_until})" for c in certs]
-        )
-        project_list = "\n".join(
-            [
-                f"- {p.name} | {p.client_name} ({p.client_type}) | ₹{p.value_crore}Cr | {p.completion_year} | {p.voltage_level}"
-                for p in projects
-            ]
-        )
-
-        prompt = f"""
-        You are a tender eligibility assessment assistant for Trident Engineers & Associates.
-
-        COMPANY PROFILE:
-        - Annual Turnover: ₹{profile.annual_turnover_crore} Crore ({profile.turnover_year})
-        - Electrical Contractor License: {profile.electrical_contractor_license} ({profile.contractor_class})
-        - Established: {profile.established_year}
-
-        CERTIFICATIONS:
-        {cert_list}
-
-        PAST PROJECTS (sorted by value):
-        {project_list}
-
-        OUR SERVICES AND PRODUCTS:
-        {product_list}
-
-        TENDER DOCUMENT:
-        {full_text[:5000]}
-
-        YOUR TASKS:
-        1. Extract SPECIFIC eligibility criteria from the tender document including:
-        - Exact minimum turnover required (calculate from tender value and years)
-        - Exact past project experience required (30%/40%/60% of tender value)
-        - Required licenses and certifications
-        - Any other specific requirements
-        2. Check EACH criterion with EXACT numbers against company data
-        3. Match our services to tender line items
-        4. Summarize the tender
-
-        Respond ONLY in this exact JSON format:
-        {{
-        "tender_name": "short name",
-        "tender_value_crore": 8.05,
-        "tender_summary": "3-4 sentence summary",
-        "eligibility": {{
-            "verdict": "ELIGIBLE or PARTIALLY ELIGIBLE or NOT ELIGIBLE",
-            "verdict_reason": "one line with specific numbers e.g. Turnover ₹12.5Cr > ₹8.05Cr required",
-            "criteria": [
-            {{
-                "requirement": "specific requirement with exact number e.g. Min turnover ₹8.05 Crore/year",
-                "company_status": "exact company value e.g. ₹12.5 Crore turnover",
-                "result": "PASS or FAIL or PARTIAL",
-                "notes": "brief specific note"
-            }}
-            ],
-            "recommended_action": "specific next steps"
-        }},
-        "matched_products": [
-            {{
-            "name": "product/service name from our catalog",
-            "reason": "why it fits this specific tender",
-            "match_score": "High or Medium or Low",
-            "evidence": "exact quote from tender document"
-            }}
-        ]
-        }}
-        """
-
-        response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text_resp = (
-            response.choices[0]
-            .message.content.strip()
-            .replace("```json", "")
-            .replace("```", "")
-        )
-        result = json.loads(text_resp)
-
-        history = TenderHistory(
-            filename=filename,
-            summary=result.get("tender_summary", ""),
-            matched_products=json.dumps(result.get("matched_products", [])),
-        )
-        db.session.add(history)
-        db.session.commit()
-
-        return render_template(
-            "tender_result.html", result=result, tender_text=full_text[:500]
-        )
-
-    return render_template("tender.html")
-    if request.method == "POST":
-        pdf = request.files["tender_pdf"]
-        filename = secure_filename(pdf.filename)
-        path = os.path.join(app.config["UPLOAD_FOLDER"], filename)
-        pdf.save(path)
-
-        # Extract text via OCR
-        doc = fitz.open(path)
-        full_text = ""
-        for page in doc:
-            text = page.get_text()
-            if text.strip():
-                full_text += text
-            else:
-                pix = page.get_pixmap(dpi=300)
-                img = Image.open(io.BytesIO(pix.tobytes("png")))
-                full_text += pytesseract.image_to_string(img)
-
-        # Get all products from DB
-        all_products = Product.query.all()
-        product_list = "\n".join(
-            [
-                f"- {p.name} ({p.category}): {p.description} | Features: {p.features} | Applications: {p.applications}"
-                for p in all_products
-            ]
-        )
-
-        # Ask Gemini to match products to tender
-        prompt = f"""
-You are a technical sales assistant for Trident Services Pvt Ltd, an authorized Cummins dealer.
-
-Here is a tender document:
-{full_text[:5000]}
-
-Here are our available products:
-{product_list}
-
-Your task:
-1. Summarize what this tender is asking for in 3-4 sentences
-2. Identify which of our products are relevant to this tender
-3. For each matched product, explain in 2-3 sentences why it fits the tender requirements
-
-Respond in this exact JSON format:
-{{
-  "tender_summary": "...",
-  "matched_products": [
-    {{
-      "name": "product name",
-      "reason": "why it fits",
-      "confidence": "High"
-    }}
-  ]
-}}
-
-For confidence, use:
-- "High" if the product directly matches a specific requirement in the tender
-- "Medium" if the product is relevant but not explicitly required
-- "Low" if the product is a stretch match
-"""
-        response = groq_client.chat.completions.create(
-            model="llama-3.3-70b-versatile",
-            messages=[{"role": "user", "content": prompt}],
-        )
-        text = (
-            response.choices[0]
-            .message.content.strip()
-            .replace("```json", "")
-            .replace("```", "")
-        )
-        result = json.loads(text)
-        history = TenderHistory(
-            filename=filename,
-            summary=result["tender_summary"],
-            matched_products=json.dumps(result["matched_products"]),
-        )
-        db.session.add(history)
-        db.session.commit()
-
-        # Store tender text in session for next steps
-        from flask import session
-
-        app.secret_key = "trident_secret_key"
-        session["tender_text"] = tender_text
-        session["tender_filename"] = filename
-
-        return render_template(
-            "tender_result.html",
-            result=None,
-            tender_text=tender_text,
-            filename=filename,
-            run_check=True,
-        )
-
-    return render_template("tender.html")
-
-
-@app.route("/tender/eligibility", methods=["POST"])
-def tender_eligibility():
-    tender_text = request.form.get("tender_text")
-
-    # Get company data
-    profile = db.session.execute(
-        text("SELECT * FROM company_profile WHERE id=1")
-    ).fetchone()
-
-    certs = db.session.execute(text("SELECT * FROM certifications")).fetchall()
-
-    projects = db.session.execute(
-        text("SELECT * FROM past_projects ORDER BY value_crore DESC")
-    ).fetchall()
-
-    # Build company summary for LLM
-    cert_list = "\n".join(
-        [f"- {c.name} ({c.issuing_body}, valid until {c.valid_until})" for c in certs]
+        filetype="pdf"
     )
-    project_list = "\n".join(
-        [
-            f"- {p.name} | Client: {p.client_name} ({p.client_type}) | Value: ₹{p.value_crore} Crore | Year: {p.completion_year} | Type: {p.project_type} | Voltage: {p.voltage_level}"
-            for p in projects
-        ]
+
+    for page in doc:
+
+        text += page.get_text()
+
+    return text
+
+
+def extract_sections(full_text):
+
+    headings = [
+
+        "1. NIT HEADER",
+
+        "2. SCHEDULE",
+
+        "Eligibility Conditions",
+
+        "Special Financial Criteria",
+
+        "Special Technical Criteria",
+
+        "Commercial-Compliance",
+
+        "General Instructions",
+
+        "Special Conditions",
+
+        "Technical-Compliances",
+
+        "Undertakings",
+
+        "Custom"
+
+    ]
+
+    lower = full_text.lower()
+
+    positions = []
+
+    for heading in headings:
+
+        idx = lower.find(
+
+            heading.lower()
+
+        )
+
+        if idx != -1:
+
+            positions.append(
+
+                (idx, heading)
+
+            )
+
+    positions.sort()
+
+    sections = {}
+
+    for i, (start, heading) in enumerate(positions):
+        if i < len(positions)-1:
+            end = positions[i+1][0]
+        else:
+            end = len(full_text)
+        sections[heading] = \
+            full_text[start:end]
+    return sections
+
+def build_dashboard_data(sections):
+
+    nit_data = build_nit_dictionary(sections)
+
+    advertised = nit_data.get(
+
+        "Advertised Value",
+
+        "-"
+
+    )
+
+
+    advertised = re.sub(
+        r"[^\d.]",
+        "",
+        str(advertised)
+    )
+
+    if advertised:
+        advertised = f"{float(advertised):,.2f}"
+    else:
+        advertised = "-"
+
+
+    earnest = nit_data.get(
+
+        "Earnest Money (Rs.)",
+
+        "-"
+
+    )
+
+
+    if earnest != "-":
+
+        earnest = f"{float(earnest):,.2f}"
+
+
+    completion = nit_data.get(
+
+        "Period of Completion",
+
+        "-"
+
+    )
+
+
+    return {
+
+        "advertised_value":
+
+        advertised,
+
+
+        "earnest_money":
+
+        earnest,
+
+
+        "completion_period":
+
+        completion
+
+    }
+
+def build_nit_dictionary(sections):
+
+    nit = sections.get(
+        "1. NIT HEADER",
+        ""
+    )
+
+    fields = [
+
+        "Name of Work",
+
+        "Tender Closing Date Time",
+
+        "Bidding Start Date",
+
+        "Bidding type",
+
+        "Tender Type",
+
+        "Bidding System",
+
+        "Pre-Bid Conference Required",
+
+        "Advertised Value",
+
+        "Earnest Money (Rs.)",
+
+        "Validity of Offer ( Days)",
+
+        "Period of Completion",
+
+        "Are JV allowed to bid",
+
+        "Are Consortium allowed to bid",
+
+        "Contract Type"
+
+    ]
+
+    nit_data = {}
+
+    for field in fields:
+        pattern = rf"{re.escape(field)}\s*:?\s*(.+)"
+        match = re.search(pattern,nit,re.IGNORECASE)
+        if match:
+            nit_data[field] = \
+                match.group(1).strip()
+     # ---------- SPECIAL FIXES ----------
+
+    consortium = re.search(
+
+        r'Are Consortium allowed\s+to bid\s+(Yes|No)',
+
+        nit,
+
+        re.IGNORECASE
+
+    )
+
+    if consortium:
+        nit_data["Are Consortium allowed to bid"] = \
+            consortium.group(1)
+
+
+    closing = re.search(
+
+        r'Tender Closing Date\s*Time\s*(\d{2}/\d{2}/\d{4}\s+\d{2}:\d{2})',
+
+        nit,
+
+        re.IGNORECASE
+
+    )
+
+    if closing:
+        nit_data["Tender Closing Date Time"] = \
+            closing.group(1)
+
+
+    completion = re.search(
+
+        r'Period of Completion\s+(\d+\s+\w+)',
+
+        nit,
+
+        re.IGNORECASE
+
+    )
+
+    if completion: 
+        nit_data["Period of Completion"] = \
+            completion.group(1)
+    return nit_data
+
+def answer_question(
+
+question,
+
+dashboard,
+
+nit_data
+
+):
+
+    Q_MAP = {
+
+        "When does bidding start?":
+
+        lambda:
+
+        nit_data.get(
+
+            "Bidding Start Date",
+
+            "Not found"
+
+        ),
+
+
+        "When is the tender closing date?":
+
+        lambda:
+
+        nit_data.get(
+
+            "Tender Closing Date Time",
+
+            "Not found"
+
+        ),
+
+
+        "Is JV allowed?":
+
+        lambda:
+
+        nit_data.get(
+
+            "Are JV allowed to bid",
+
+            "Not found"
+
+        ),
+
+
+        "Is consortium allowed?":
+
+        lambda:
+
+        nit_data.get(
+
+            "Are Consortium allowed to bid",
+
+            "Not found"
+
+        ),
+
+
+        "What is the contract type?":
+
+        lambda:
+
+        nit_data.get(
+
+            "Contract Type",
+
+            "Not found"
+
+        )
+
+    }
+
+
+    if question in Q_MAP:
+
+        return Q_MAP[question]()
+
+
+    return "Question unavailable."
+
+def evaluate_financial_eligibility(requirements, profile):
+    results = []
+    recent = (FinancialYear.query.filter_by(company_id=profile.id)
+              .order_by(FinancialYear.financial_year_end.desc())
+              .limit(3).all())
+    avg_turnover_rupees = (
+        sum(fy.annual_turnover_crore for fy in recent) / len(recent) * 1e7
+        if recent else 0
+    )
+    for req in requirements:
+        if req["type"] == "turnover":
+            results.append(CriterionResult(
+                category="Financial", name="Average Annual Turnover (last 3 FY)",
+                required=f"Rs. {req['required']:,.0f}",
+                actual=f"Rs. {avg_turnover_rupees:,.0f}",
+                eligible=avg_turnover_rupees >= req["required"]
+            ))
+    return results
+
+def evaluate_technical_eligibility(technical, tender_value_crore):
+    cutoff = date.today() - timedelta(days=365 * technical.get("lookback_period_years", 7))
+    defn = technical.get("similar_work_definition", {})
+    allowed_types = set(defn.get("allowed_work_types", []))
+    allowed_combos = set(defn.get("allowed_equipment_combos", []))
+    min_kv = defn.get("min_voltage_kv", 0)
+    cert_rules = technical.get("certificate_rules", {})
+
+    works = WorkExperience.query.filter(
+        WorkExperience.completion_date >= cutoff,
+        WorkExperience.is_substantially_completed == True
+    ).all()
+
+    qualifying = []
+    for w in works:
+        if allowed_types and w.work_type not in allowed_types:
+            continue
+        if allowed_combos and w.equipment_combo not in allowed_combos:
+            continue
+        if w.voltage_class_kv < min_kv:
+            continue
+        qualifying.append({"work": w, "percent": (w.work_value_crore / tender_value_crore) * 100})
+
+    for opt in sorted(technical.get("similar_work_options", []), key=lambda o: -o["min_count"]):
+        matches = [q for q in qualifying if q["percent"] >= opt["min_percent_of_tender_value"]]
+        if len(matches) >= opt["min_count"]:
+            return CriterionResult(
+                category="Technical", name="Similar Work Experience",
+                required=f"{opt['min_count']} work(s) ≥{opt['min_percent_of_tender_value']}% of tender value",
+                actual=f"{len(matches)} qualifying work(s) found",
+                eligible=True
+            )
+
+    best = max(qualifying, key=lambda q: q["percent"], default=None)
+    return CriterionResult(
+        category="Technical", name="Similar Work Experience",
+        required="See similar_work_options thresholds",
+        actual=f"Best match {best['percent']:.0f}% of tender value" if best else "No qualifying work found",
+        eligible=False
+    )
+
+def evaluate_all_eligibility(sections, profile, tender_value_crore, technical_json):
+    results = []
+    results += evaluate_financial_eligibility(extract_financial_eligibility(sections), profile)
+    results.append(evaluate_technical_eligibility(technical_json, tender_value_crore))
+
+    verdict = "ELIGIBLE" if all(r.eligible for r in results) else "NOT ELIGIBLE"
+    failed = [r for r in results if not r.eligible]
+    reason = "; ".join(f"{r.name}: required {r.required}, actual {r.actual}" for r in failed) or "All criteria met"
+
+    return {
+        "verdict": verdict,
+        "reason": reason,
+        "criteria_json": json.dumps([asdict(r) for r in results])
+    }
+
+def evaluate_compliance_eligibility(requirements, profile):
+    results = []
+    docs = {d.document_type: d for d in CompanyDocument.query.filter_by(company_id=profile.id)}
+
+    for req in requirements:
+        if req.requirement_type is None or req.documents_uploading != "Mandatory":
+            continue  # boilerplate undertaking or optional item — not a pass/fail gate
+
+        applicable_entities = ENTITY_CERT_RULES.get(req.requirement_type)
+        if applicable_entities and profile.entity_type not in applicable_entities:
+            continue  # doesn't apply to this entity type
+
+        doc = docs.get(req.requirement_type)
+        has_valid_doc = bool(doc and doc.has_document and (
+            doc.valid_until is None or doc.valid_until >= date.today()
+        ))
+        results.append(CriterionResult(
+            category="Compliance", name=req.requirement_type,
+            required="Document on file", actual="Present" if has_valid_doc else "Missing",
+            eligible=has_valid_doc
+        ))
+    return results
+
+def extract_eligibility(sections):
+    """
+    Extracts financial eligibility requirements from the
+    'Special Financial Criteria' section of the tender.
+    """
+    requirements = []
+    financial = sections.get("Special Financial Criteria", "")
+
+    # Convert newlines/tabs/multiple spaces into one space
+    financial = re.sub(r"\s+", " ", financial)
+
+    # Find all turnover requirement mentions, capturing the unit too
+    turnover_matches = re.findall(
+        r"annual contractual turnover\s*=\s*Rs\.?\s*([\d,]+(?:\.\d+)?)\s*(crore|lakh)?",
+        financial,
+        re.IGNORECASE
+    )
+
+    if turnover_matches:
+        value_str, unit = turnover_matches[-1]  # take the last occurrence
+        required_turnover = float(value_str.replace(",", ""))
+
+        if unit.lower() == "crore":
+            required_turnover *= 1e7
+        elif unit.lower() == "lakh":
+            required_turnover *= 1e5
+        # if no unit is found, value is assumed to already be in rupees
+
+        requirements.append({
+            "type": "turnover",
+            "name": "Average Annual Turnover",
+            "required": required_turnover
+        })
+
+    return requirements
+
+def parse_gemini(response):
+
+    if hasattr(response, "text"):
+
+        response = response.text
+
+    response = response.replace(
+        "```json",
+        ""
+    )
+
+    response = response.replace(
+        "```",
+        ""
+    )
+
+    response = response.strip()
+
+    try:
+
+        return json.loads(response)
+
+    except Exception:
+
+        return {
+
+        "lookback_period_years":7,
+
+        "similar_work_options":[],
+
+        "similar_work_definition":{
+
+            "allowed_work_types":[],
+
+            "allowed_equipment_combos":[],
+
+            "min_voltage_kv":0
+
+        },
+
+        "certificate_rules":{},
+
+        "mandatory_conditions":[]
+
+        }
+    
+def summarize_technical_criteria(technical):
+
+    model = genai.GenerativeModel(
+        "gemini-2.5-flash"
     )
 
     prompt = f"""
-You are an eligibility assessment assistant for Trident Engineers & Associates.
+You are a tender eligibility extractor.
 
-COMPANY PROFILE:
-- Name: {profile.name}
-- Annual Turnover: ₹{profile.annual_turnover_crore} Crore ({profile.turnover_year})
-- Electrical Contractor License: {profile.electrical_contractor_license} ({profile.contractor_class})
-- Established: {profile.established_year}
+Analyze this tender technical criteria.
 
-CERTIFICATIONS:
-{cert_list}
+Extract:
 
-PAST PROJECTS:
-{project_list}
+- years_of_experience
+- similar_work_options
+- similar_work_definition
+- mandatory_conditions
 
-TENDER DOCUMENT (relevant sections):
-{tender_text[:4000]}
+Return ONLY JSON.
 
-YOUR TASK:
-1. Extract the eligibility criteria from the tender (financial + technical + license requirements)
-2. Check each criterion against the company profile
-3. Give an overall verdict: ELIGIBLE, PARTIALLY ELIGIBLE, or NOT ELIGIBLE
+Example:
 
-Respond ONLY in this exact JSON format:
 {{
-  "tender_name": "short name of the tender",
-  "tender_value_crore": 0.0,
-  "overall_verdict": "ELIGIBLE or PARTIALLY ELIGIBLE or NOT ELIGIBLE",
-  "verdict_reason": "one line summary",
-  "criteria": [
-    {{
-      "requirement": "what the tender requires",
-      "company_status": "what the company has",
-      "result": "PASS or FAIL or PARTIAL",
-      "notes": "brief explanation"
-    }}
-  ],
-  "recommended_action": "what Trident should do next"
+ "lookback_period_years":7,
+
+ "similar_work_options":[
+
+   {{
+      "min_count":3,
+
+      "min_percent_of_tender_value":30
+   }},
+
+   {{
+      "min_count":2,
+
+      "min_percent_of_tender_value":40
+   }},
+
+   {{
+      "min_count":1,
+
+      "min_percent_of_tender_value":60
+   }}
+
+ ],
+
+ "similar_work_definition":{{
+
+   "allowed_work_types":[],
+
+   "allowed_equipment_combos":[],
+
+   "min_voltage_kv":0
+
+ }},
+
+ "certificate_rules":{{}},
+
+ "mandatory_conditions":[]
 }}
+
+Tender text:
+
+{technical}
+
+Return JSON only.
 """
 
-    response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile", messages=[{"role": "user", "content": prompt}]
+    response = model.generate_content(
+        prompt
     )
-    text_response = (
-        response.choices[0]
-        .message.content.strip()
-        .replace("```json", "")
-        .replace("```", "")
-    )
-    eligibility = json.loads(text_response)
 
-    # Save to tender history
+    return response.text
+
+@app.route("/tender", methods=["GET", "POST"])
+def tender():
+    if request.method == "GET":
+        return render_template("tender_result.html", result= None , history = None , criteria=[])
+
+    pdf = request.files.get("pdf_file")
+    if not pdf or pdf.filename == "":
+        flash("Please upload a tender PDF.")
+        return redirect(url_for("tender"))
+
+    filename = secure_filename(pdf.filename)
+
+    # extract_pdf_text reads via pdf.read(), so do that before saving
+    full_text = extract_pdf_text(pdf)
+    sections = extract_sections(full_text)
+    nit_data = build_nit_dictionary(sections)
+
+    # tender value, needed for technical % thresholds
+    advertised_value_str = nit_data.get("Advertised Value", "0")
+    try:
+        tender_value_crore = float(re.sub(r"[^\d.]", "", advertised_value_str)) / 1e7
+    except ValueError:
+        tender_value_crore = 0.0
+
+    # financial check
+
+    financial_requirements = extract_eligibility(sections)
+
+    profile = CompanyProfile.query.first()
+
+    financial_results = evaluate_financial_eligibility(financial_requirements,profile)
+
+    dashboard = build_dashboard_data(sections)
+
+
+    # technical check
+
+    technical_section_text = sections.get("Special Technical Criteria","")
+
+    gemini_response = summarize_technical_criteria(technical_section_text)
+
+    technical_json = parse_gemini(gemini_response)
+
+    technical_result = evaluate_technical_eligibility(technical_json,tender_value_crore)
+
+
+
+    # combine results
+
+    results = financial_results + [technical_result]
+    # compliance check (entity type / documents) — only runs if requirements were parsed
+    # for this tender; see note below
+
+    overall_eligible = all(r.eligible for r in results)
+    failed = [r for r in results if not r.eligible]
+    reason = "; ".join(f"{r.name}: required {r.required}, actual {r.actual}" for r in failed) or "All criteria met"
+
     history = TenderHistory(
-        filename=request.form.get("filename"),
-        summary=eligibility.get("verdict_reason", ""),
-        matched_products=json.dumps([]),
+        filename=filename,
+        tender_name=nit_data.get("Name of Work", "-"),
+        tender_value_crore=tender_value_crore,
+        eligibility_verdict="ELIGIBLE" if overall_eligible else "NOT ELIGIBLE",
+        verdict_reason=reason,
+        eligibility_criteria=json.dumps([asdict(r) for r in results]),
+        created_at=datetime.utcnow()
     )
     db.session.add(history)
     db.session.commit()
-
+    result = {"nit_header": nit_data,"dashboard": dashboard, "eligibility": financial_results,"technical_eligibility": technical_json}
     return render_template(
-        "tender_result.html", result=eligibility, tender_text=tender_text[:500]
+
+        "tender_result.html",
+
+        result=result,
+
+        history=history,
+
+        criteria=results
+
     )
-
-
 @app.route("/services")
 def services():
     all_services = Service.query.all()
@@ -923,6 +1444,7 @@ def _replace_slide_image(slide, image_url, target_index=1):
     except Exception as e:
 
         print(e)
+
 @app.route("/generate-service-ppt/<int:id>")
 def generate_service_ppt(id):
     """Generate a PPT for a single service using the Brand Strategy template (Slide 6)."""
@@ -1012,271 +1534,6 @@ def generate_manufacturing_ppt(id):
     prs.save(output_path)
     return send_file(output_path, as_attachment=True, download_name=filename)
 
-
-# @app.route("/generate-all-services-ppt")
-# def generate_all_services_ppt():
-
-#     all_services = Service.query.all()
-
-#     if not all_services:
-
-#         return redirect("/services")
-
-#     template_path = os.path.join(
-#         "templates",
-#         "Brand Strategy.pptx"
-#     )
-
-#     prs = Presentation(template_path)
-
-#     SERVICE_TEMPLATE = 5
-
-#     for i, service in enumerate(all_services):
-
-#         if i == 0:
-
-#             slide = prs.slides[SERVICE_TEMPLATE]
-
-#         else:
-
-#             slide = duplicate_slide(
-#                 prs,
-#                 SERVICE_TEMPLATE
-#             )
-
-#         content = None
-
-#         if service.detailed_content:
-
-#             try:
-
-#                 content = json.loads(
-#                     service.detailed_content
-#                 )
-
-#             except:
-
-#                 content = None
-
-#         overview_text = (
-
-#             content["overview"]
-
-#             if content and content.get("overview")
-
-#             else service.short_description or ""
-
-#         )
-
-#         services_text = (
-
-#             "\n".join(
-
-#                 [f"• {x}" for x in content["key_features"]]
-
-#             )
-
-#             if content and content.get("key_features")
-
-#             else service.short_description or ""
-
-#         )
-
-#         why_text = (
-
-#             "\n".join(
-
-#                 [f"✓ {x}" for x in content["why_choose_us"]]
-
-#             )
-
-#             if content and content.get("why_choose_us")
-
-#             else
-
-#             "✓ Professional team\n"
-
-#             "✓ Quality workmanship"
-
-#         )
-
-#         _replace_text_in_slide(
-
-#             slide,
-
-#             {
-
-#                 "{{SERVICE_NAME}}": shorten_title(service.name),
-
-#                 "{{SERVICE_OVERVIEW}}": overview_text,
-
-#                 "{{THE_SERVICES}}": services_text,
-
-#                 "{{WHY_CHOOSE_US}}": why_text,
-
-#             }
-
-#         )
-
-#         if service.image_url:
-
-#             _replace_slide_image(
-
-#                 slide,
-
-#                 service.image_url,
-
-#                 target_index=1
-
-#             )
-
-#     output_path = os.path.join(
-
-#         "static",
-
-#         "uploads",
-
-#         "All_Services_Presentation.pptx"
-
-#     )
-
-#     os.makedirs(
-
-#         os.path.dirname(output_path),
-
-#         exist_ok=True
-
-#     )
-
-#     prs.save(output_path)
-
-#     return send_file(
-
-#         output_path,
-
-#         as_attachment=True,
-
-#         download_name="All_Services_Presentation.pptx"
-
-#     )
-# @app.route("/generate-all-manufacturing-ppt")
-# def generate_all_manufacturing_ppt():
-
-#     all_products = ManufacturingProduct.query.all()
-
-#     if not all_products:
-
-#         return redirect("/manufacturing")
-
-#     template_path = os.path.join(
-
-#         "templates",
-
-#         "Brand Strategy.pptx"
-
-#     )
-
-#     prs = Presentation(template_path)
-
-#     MANUFACTURING_TEMPLATE = 6
-
-#     for i, product in enumerate(all_products):
-
-#         if i == 0:
-
-#             slide = prs.slides[MANUFACTURING_TEMPLATE]
-
-#         else:
-
-#             slide = duplicate_slide(
-
-#                 prs,
-
-#                 MANUFACTURING_TEMPLATE
-
-#             )
-
-#         content = None
-
-#         if product.detailed_content:
-
-#             try:
-
-#                 content = json.loads(
-
-#                     product.detailed_content
-
-#                 )
-
-#             except:
-
-#                 content = None
-
-#         overview_text = (
-
-#             content["overview"]
-
-#             if content and content.get("overview")
-
-#             else product.short_description or ""
-
-#         )
-
-#         _replace_text_in_slide(
-
-#             slide,
-
-#             {
-
-#                 "{{MANUFACTURING_NAME}}": shorten_title(product.name),
-
-#                 "{{MANUFACTURING_OVERVIEW}}": overview_text,
-
-#             }
-
-#         )
-
-#         if product.image_url:
-
-#             _replace_slide_image(
-
-#                 slide,
-
-#                 product.image_url,
-
-#                 target_index=1
-
-#             )
-
-#     output_path = os.path.join(
-
-#         "static",
-
-#         "uploads",
-
-#         "All_Manufacturing_Presentation.pptx"
-
-#     )
-
-#     os.makedirs(
-
-#         os.path.dirname(output_path),
-
-#         exist_ok=True
-
-#     )
-
-#     prs.save(output_path)
-
-#     return send_file(
-
-#         output_path,
-
-#         as_attachment=True,
-
-#         download_name="All_Manufacturing_Presentation.pptx"
-
-#     )
 @app.route("/generate-custom-ppt", methods=["POST"])
 def generate_custom_ppt():
 
@@ -1543,6 +1800,10 @@ def test_ppt():
     )
 if __name__ == "__main__":
     with app.app_context():
+
         db.create_all()
 
-    app.run(debug=True, use_reloader=False)
+    app.run(
+        debug=True,
+        use_reloader=False
+    )

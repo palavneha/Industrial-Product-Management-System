@@ -1,132 +1,926 @@
 <!DOCTYPE html>
+
 <html lang="en">
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TRIDENT</title>
-    <link rel="icon" type="image/png" href="/static/favicon.png">
-    <script src="https://cdn.tailwindcss.com"></script>
-    <style>
-        body {
-            font-family: Inter, sans-serif;
-            background: #f5f5f5;
-        }
-    </style>
+
+<meta charset="UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>TRIDENT</title>
+
+<link rel="icon" type="image/png" href="/static/favicon.png">
+
+<script src="https://cdn.tailwindcss.com"></script>
+
+<style>
+
+body{
+
+font-family:Inter,sans-serif;
+
+background:#f5f5f5;
+
+}
+
+#chat-window{
+
+display:none;
+
+}
+
+</style>
+
 </head>
 
 <body>
-    {% include 'navbar.html' %}
-    <main class="max-w-7xl mx-auto px-8 py-8">
 
-        <div class="mb-8">
-            <h1 class="text-4xl font-bold">Tender Analysis</h1>
-            <p class="text-gray-500 mt-2">{{ result.tender_name }} — ₹{{ result.tender_value_crore }} Crore</p>
-        </div>
+{% include 'navbar.html' %}
 
-        <!-- ELIGIBILITY SECTION -->
-        <div class="bg-white rounded-xl border overflow-hidden mb-6">
-            <div class="p-6 border-b flex justify-between items-center">
-                <h2 class="text-xl font-bold">Eligibility Check</h2>
-                {% if result.eligibility.verdict == "ELIGIBLE" %}
-                <span class="bg-green-100 text-green-700 px-4 py-2 rounded-full font-bold text-sm">✓ ELIGIBLE</span>
-                {% elif result.eligibility.verdict == "PARTIALLY ELIGIBLE" %}
-                <span class="bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full font-bold text-sm">⚠ PARTIALLY
-                    ELIGIBLE</span>
-                {% else %}
-                <span class="bg-red-100 text-red-700 px-4 py-2 rounded-full font-bold text-sm">✗ NOT ELIGIBLE</span>
-                {% endif %}
-            </div>
+<main class="max-w-7xl mx-auto px-8 py-8">
+{% if result %}
 
-            <div class="p-6 border-b">
-                <p class="text-gray-600">{{ result.eligibility.verdict_reason }}</p>
-            </div>
+<!-- TITLE -->
 
-            <!-- Criteria table -->
-            {% for criterion in result.eligibility.criteria %}
-            <div class="flex items-start justify-between p-5 border-b hover:bg-gray-50">
-                <div class="flex-1">
-                    <p class="font-semibold text-gray-800">{{ criterion.requirement }}</p>
-                    <p class="text-gray-500 text-sm mt-1">Our status: {{ criterion.company_status }}</p>
-                    <p class="text-gray-400 text-sm mt-1">{{ criterion.notes }}</p>
-                </div>
-                <div class="ml-6 shrink-0">
-                    {% if criterion.result == "PASS" %}
-                    <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">✓ Pass</span>
-                    {% elif criterion.result == "PARTIAL" %}
-                    <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">⚠
-                        Partial</span>
-                    {% else %}
-                    <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-semibold">✗ Fail</span>
-                    {% endif %}
-                </div>
-            </div>
-            {% endfor %}
+<div class="mb-8">
 
-            <div class="p-6 bg-blue-50">
-                <p class="text-blue-800 font-medium">📋 Recommended Action: {{ result.eligibility.recommended_action }}
-                </p>
-            </div>
-        </div>
+<h1 class="text-4xl font-bold">
 
-        <!-- TENDER SUMMARY -->
-        <div class="bg-white rounded-xl border p-6 mb-6">
-            <h2 class="text-xl font-bold mb-3">Tender Summary</h2>
-            <p class="text-gray-600">{{ result.tender_summary }}</p>
-        </div>
+Tender Analysis
 
-        <!-- MATCHED PRODUCTS -->
-        <div class="bg-white rounded-xl border overflow-hidden mb-6">
-            <div class="p-6 border-b">
-                <h2 class="text-xl font-bold">Matched Services & Products</h2>
-            </div>
+</h1>
 
-            {% for item in result.matched_products %}
-            <div class="p-6 border-b hover:bg-gray-50">
-                <div class="flex justify-between items-start">
-                    <div class="flex-1">
-                        <h3 class="text-lg font-semibold">{{ item.name }}</h3>
-                        <p class="text-gray-500 mt-1">{{ item.reason }}</p>
-                        {% if item.evidence %}
-                        <p class="text-blue-600 text-sm mt-2 italic">"{{ item.evidence }}"</p>
-                        {% endif %}
-                    </div>
-                    <div class="ml-6 shrink-0">
-                        {% if item.match_score == "High" %}
-                        <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-sm font-semibold">High
-                            Match</span>
-                        {% elif item.match_score == "Medium" %}
-                        <span class="bg-yellow-100 text-yellow-700 px-3 py-1 rounded-full text-sm font-semibold">Medium
-                            Match</span>
-                        {% else %}
-                        <span class="bg-red-100 text-red-700 px-3 py-1 rounded-full text-sm font-semibold">Low
-                            Match</span>
-                        {% endif %}
-                    </div>
-                </div>
-            </div>
-            {% endfor %}
-        </div>
+<p class="text-gray-500 mt-2">
 
-        <!-- GENERATE PPT -->
-        <form method="POST" action="/tender/ppt">
-            <input type="hidden" name="summary" value="{{ result.tender_summary }}">
-            {% for item in result.matched_products %}
-            <input type="hidden" name="product_names" value="{{ item.name }}">
-            {% endfor %}
-            <div class="flex gap-4">
-                <button type="submit"
-                    class="bg-blue-600 text-white px-6 py-3 rounded-lg font-semibold hover:bg-blue-700">
-                    Generate Proposal PPT
-                </button>
-                <a href="/tender/fill"
-                    class="bg-gray-800 text-white px-6 py-3 rounded-lg font-semibold hover:bg-gray-900">
-                    Fill Tender Form →
-                </a>
-            </div>
-        </form>
+{{ result.nit_header["Name of Work"] if result else "" }}
 
-    </main>
+</p>
+
+</div>
+
+
+
+<!-- DASHBOARD -->
+
+<div class="bg-white rounded-xl border overflow-hidden mb-6">
+
+<div class="p-6 border-b">
+
+<h2 class="text-xl font-bold">
+
+Tender Dashboard
+
+</h2>
+
+</div>
+
+
+<div class="grid grid-cols-2 md:grid-cols-4 gap-6 p-6">
+
+
+<div>
+
+<p class="text-gray-500 text-sm">
+
+Advertised Value
+
+</p>
+
+<p class="font-semibold">
+
+₹{{ result.dashboard.advertised_value }}
+
+</p>
+
+</div>
+
+
+<div>
+
+<p class="text-gray-500 text-sm">
+
+Earnest Money
+
+</p>
+
+<p class="font-semibold">
+
+₹{{ result.dashboard.earnest_money }}
+
+</p>
+
+</div>
+
+
+<div>
+
+<p class="text-gray-500 text-sm">
+
+Completion Period
+
+</p>
+
+<p class="font-semibold">
+
+{{ result.dashboard.completion_period }}
+
+</p>
+
+</div>
+
+
+
+
+</div>
+<div class="bg-white rounded-xl border overflow-hidden mb-6">
+
+<div class="p-6 border-b">
+
+<h2 class="text-xl font-bold">
+
+Eligibility Conditions
+
+</h2>
+
+</div>
+
+
+{% for item in result.eligibility %}
+
+<div class="flex justify-between items-center p-6 border-b">
+
+
+<div>
+
+<p class="font-semibold">
+
+{{ item.name }}
+
+</p>
+
+</div>
+
+
+<div>
+
+<p class="text-sm text-gray-500">
+
+Required Turnover
+
+</p>
+
+<p class="font-semibold">
+
+{{ item.required }}
+</p>
+
+</div>
+
+
+<div>
+
+<p class="text-sm text-gray-500">
+
+Company Turnover
+
+</p>
+
+<p class="font-semibold">
+
+{{ item.actual }}
+</p>
+
+</div>
+
+
+<div>
+
+{% if item.eligible %}
+
+<span
+
+class="bg-green-100
+
+text-green-700
+
+px-4 py-2
+
+rounded-full
+
+font-semibold"
+
+>
+
+✓ Eligible
+
+</span>
+
+{% else %}
+
+<span
+
+class="bg-red-100
+
+text-red-700
+
+px-4 py-2
+
+rounded-full
+
+font-semibold"
+
+>
+
+✗ Not Eligible
+
+</span>
+
+{% endif %}
+
+</div>
+
+
+</div>
+
+{% endfor %}
+
+</div>
+</div>
+
+
+
+
+
+</div>
+<div class="bg-white rounded-xl border overflow-hidden mb-6">
+
+<div class="p-6 border-b">
+
+<h2 class="text-xl font-bold">
+
+Technical Eligibility
+
+</h2>
+
+</div>
+
+
+<div class="p-6">
+
+<h3 class="font-semibold mb-3">
+
+Experience Requirement
+
+</h3>
+
+<p>
+
+Last
+
+<b>
+
+{{ result.technical_eligibility.lookback_period_years }}
+
+years
+
+</b>
+
+experience required.
+
+</p>
+
+</div>
+
+
+<div class="p-6 border-t">
+
+<h3 class="font-semibold mb-3">
+
+Similar Work Conditions
+
+</h3>
+
+<table class="w-full">
+
+<thead>
+
+<tr>
+
+<th class="text-left py-2">
+
+Projects
+
+</th>
+
+<th class="text-left py-2">
+
+Tender Value %
+
+</th>
+
+</tr>
+
+</thead>
+
+<tbody>
+
+{% for item in result.technical_eligibility.similar_work_options %}
+
+<tr>
+
+<td class="py-2">
+
+{{ item.min_count }}
+
+</td>
+
+<td class="py-2">
+
+{{ item.min_percent_of_tender_value }}%
+
+</td>
+
+</tr>
+
+{% endfor %}
+
+</tbody>
+
+</table>
+
+</div>
+
+
+<div class="p-6 border-t">
+
+<h3 class="font-semibold mb-3">
+
+Definition of Similar Work
+
+</h3>
+
+<p>
+
+{{ result.technical_eligibility.similar_work_definition }}
+
+</p>
+
+</div>
+
+
+<div class="p-6 border-t">
+
+<h3 class="font-semibold mb-3">
+
+Additional Conditions
+
+</h3>
+
+<ul class="list-disc ml-6">
+
+{% for item in result.technical_eligibility.mandatory_conditions %}
+
+<li>
+
+{{ item }}
+
+</li>
+
+{% endfor %}
+
+</ul>
+
+</div>
+
+</div>
+
+
+
+<!-- FLOATING BUTTON -->
+
+<button
+
+onclick="toggleChat()"
+
+class="fixed
+
+bottom-6
+
+right-6
+
+w-16
+
+h-16
+
+rounded-full
+
+bg-blue-600
+
+text-white
+
+text-2xl
+
+shadow-lg"
+
+>
+
+💬
+
+</button>
+
+
+
+<!-- CHATBOX -->
+
+<div
+
+id="chat-window"
+
+class="fixed
+
+bottom-24
+
+right-6
+
+w-96
+
+bg-white
+
+rounded-xl
+
+shadow-2xl
+
+border"
+
+>
+
+
+<div
+
+class="bg-blue-600
+
+text-white
+
+p-4
+
+font-bold
+
+rounded-t-xl"
+
+>
+
+Tender Assistant
+
+</div>
+
+
+
+<div
+
+id="chatbox"
+
+class="h-96
+
+overflow-y-auto
+
+p-4
+
+space-y-4"
+
+>
+
+
+<div
+
+class="bg-gray-100
+
+p-3
+
+rounded-xl"
+
+>
+
+Hello 👋
+
+Choose a question below.
+
+</div>
+
+</div>
+
+
+
+<div
+
+class="border-t
+
+p-4"
+
+>
+
+<div
+
+class="grid
+
+grid-cols-1
+
+gap-2"
+
+>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+What is the tender name?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+What is the advertised value?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+What is the earnest money?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+When does bidding start?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+When is the tender closing date?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+What is the completion period?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+Is JV allowed?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+Is consortium allowed?
+
+</button>
+
+
+<button
+
+onclick="askQuestion(this)"
+
+class="border
+
+p-2
+
+rounded
+
+hover:bg-gray-100"
+
+>
+
+What is the contract type?
+
+</button>
+
+</div>
+
+</div>
+
+</div>
+
+{% else %}
+
+<div class="bg-white rounded-xl p-10 text-center">
+
+<h2 class="text-2xl font-bold mb-4">
+
+Upload a Tender PDF
+
+</h2>
+
+<form
+
+method="POST"
+
+enctype="multipart/form-data"
+
+class="space-y-4"
+
+>
+
+<input
+
+type="file"
+
+name="pdf_file"
+
+accept=".pdf"
+
+class="border p-3 rounded w-full"
+
+/>
+
+<button
+
+type="submit"
+
+class="bg-blue-600 text-white px-6 py-3 rounded"
+
+>
+
+Analyze Tender
+
+</button>
+
+</form>
+
+</div>
+
+{% endif %}
+</main>
+
+
+<script>
+
+
+{% if result %}
+
+const dashboard = {{ result.dashboard | tojson }};
+
+const nit = {{ result.nit_header | tojson }};
+
+{% else %}
+
+const dashboard = {};
+
+const nit = {};
+
+{% endif %}
+
+
+function toggleChat(){
+
+const box = document.getElementById("chat-window")
+
+if(
+
+box.style.display==="block"
+
+){
+
+box.style.display="none"
+
+}
+
+else{
+
+box.style.display="block"
+
+}
+
+}
+
+
+
+function answerQuestion(question){
+
+const answers = {
+
+
+"What is the tender name?":
+
+nit["Name of Work"],
+
+
+"What is the advertised value?":
+
+"₹"+dashboard.advertised_value,
+
+
+"What is the earnest money?":
+
+"₹"+dashboard.earnest_money,
+
+
+"When does bidding start?":
+
+nit["Bidding Start Date"],
+
+
+"When is the tender closing date?":
+
+nit["Tender Closing Date Time"],
+
+
+"What is the completion period?":
+
+dashboard.completion_period,
+
+
+"Is JV allowed?":
+
+nit["Are JV allowed to bid"],
+
+
+"Is consortium allowed?":
+
+nit["Are Consortium allowed to bid"],
+
+
+"What is the contract type?":
+
+nit["Contract Type"]
+
+}
+
+
+return answers[question]
+
+||
+
+"Information unavailable."
+
+}
+
+
+
+function askQuestion(button){
+
+const question =
+
+button.innerText
+
+
+const chatbox =
+
+document.getElementById(
+
+"chatbox"
+
+)
+
+
+chatbox.innerHTML += `
+
+<div class="flex justify-end">
+
+<div class="bg-blue-600 text-white p-3 rounded-xl max-w-xs">
+
+${question}
+
+</div>
+
+</div>
+
+`
+
+
+const answer =
+
+answerQuestion(question)
+
+
+chatbox.innerHTML += `
+
+<div class="flex">
+
+<div class="bg-gray-100 p-3 rounded-xl max-w-xs">
+
+${answer}
+
+</div>
+
+</div>
+
+`
+
+
+chatbox.scrollTop =
+
+chatbox.scrollHeight
+
+}
+
+</script>
+
 </body>
 
 </html>
