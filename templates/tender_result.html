@@ -291,7 +291,16 @@ experience required.
 </p>
 
 </div>
-
+<div class="p-6 border-t">
+  <h3 class="font-semibold mb-3">Eligibility Result</h3>
+  <p class="text-sm text-gray-500 mb-1">Required: {{ result.technical_eligibility.required }}</p>
+  <p class="text-sm text-gray-500 mb-3">Your Company: {{ result.technical_eligibility.actual }}</p>
+  {% if result.technical_eligibility.eligible %}
+    <span class="bg-green-100 text-green-700 px-4 py-2 rounded-full font-semibold">✓ Eligible</span>
+  {% else %}
+    <span class="bg-red-100 text-red-700 px-4 py-2 rounded-full font-semibold">✗ Not Eligible</span>
+  {% endif %}
+</div>
 
 <div class="p-6 border-t">
 

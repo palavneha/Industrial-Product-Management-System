@@ -1,7 +1,6 @@
 from flask import request, render_template, redirect, url_for, flash
 from werkzeug.utils import secure_filename
 from dataclasses import asdict
-#import google.generativeai as genai
 from flask import Flask, json, render_template, request, redirect
 from flask_sqlalchemy import SQLAlchemy, session
 from sqlalchemy import or_, text
@@ -19,7 +18,7 @@ import os
 from groq import Groq
 import re
 from dataclasses import asdict
-
+import time
 
 load_dotenv()
 from dataclasses import dataclass
@@ -36,8 +35,47 @@ class CriterionResult:
     actual: str
 
     eligible: bool
+
+@dataclass
+class CriterionResult:
+    category: str
+    name: str
+    required: str
+    actual: str
+    eligible: bool
+
+SIMILAR_WORK_OPTIONS = [
+    {"min_count": 3, "min_percent_of_tender_value": 30},
+    {"min_count": 2, "min_percent_of_tender_value": 40},
+    {"min_count": 1, "min_percent_of_tender_value": 60},
+]
+LOOKBACK_PERIOD_YEARS = 7
+
+CERTIFICATE_RULES = {
+    "private_individual_allowed": False,
+    "public_listed_requirements": {
+        "min_avg_turnover_last_3yr_crore": 500,
+        "must_be_listed_on": ["NSE", "BSE"],
+        "min_years_since_incorporation": 5,
+        "required_supporting_docs": [
+            "work_order_copy", "boq", "ca_certified_payment_details",
+            "tds_certificates", "final_bill_copy"
+        ],
+    },
+}
+
+TECHNICAL_MANDATORY_CONDITIONS = [
+    "Work experience certificate from a private individual shall not be considered.",
+    "Certificates issued by Public Listed companies are accepted only if the issuing "
+    "company has average annual turnover of Rs. 500 crore or more in the last 3 financial "
+    "years, is listed on NSE or BSE, and was incorporated at least 5 years prior to the "
+    "tender closing date.",
+    "If the certificate is from a Public Listed company, the tenderer must also submit the "
+    "work order copy, bill of quantities, CA-certified payment details, TDS certificates, "
+    "and copy of the final/last bill paid.",
+]
+
 #pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-#genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
 groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 
@@ -396,21 +434,20 @@ def edit_product(id):
 #     return send_file(filename, as_attachment=True)
 
 def extract_pdf_text(pdf):
-
     text = ""
-
-    doc = fitz.open(
-        stream=pdf.read(),
-
-        filetype="pdf"
-    )
-
+    doc = fitz.open(stream=pdf.read(), filetype="pdf")
     for page in doc:
-
         text += page.get_text()
 
-    return text
+    # PDF text layers often embed ligatures as single glyphs (ﬁ, ﬂ, etc.)
+    # instead of separate letters — normalize so downstream regex matching works
+    ligature_map = {
+        "ﬁ": "fi", "ﬂ": "fl", "ﬀ": "ff", "ﬃ": "ffi", "ﬄ": "ffl",
+    }
+    for lig, replacement in ligature_map.items():
+        text = text.replace(lig, replacement)
 
+    return text
 
 def extract_sections(full_text):
 
@@ -738,61 +775,95 @@ def evaluate_financial_eligibility(requirements, profile):
             ))
     return results
 
-def evaluate_technical_eligibility(technical, tender_value_crore):
-    cutoff = date.today() - timedelta(days=365 * technical.get("lookback_period_years", 7))
-    defn = technical.get("similar_work_definition", {})
-    allowed_types = set(defn.get("allowed_work_types", []))
-    allowed_combos = set(defn.get("allowed_equipment_combos", []))
-    min_kv = defn.get("min_voltage_kv", 0)
-    cert_rules = technical.get("certificate_rules", {})
+def evaluate_technical_eligibility(sections, tender_value_crore):
+    definition_text = extract_similar_work_definition_text(sections)
+    parsed = parse_similar_work_items(definition_text)
+
+    allowed_items = parsed.get("allowed_items", [])
+    min_voltage_kv = parsed.get("min_voltage_kv") or 0
+
+    print("=== TECHNICAL ELIGIBILITY DEBUG ===")
+    print("Definition text sent to Gemini:", repr(definition_text))
+    print("Parsed allowed_items:", allowed_items)
+    print("Parsed min_voltage_kv:", min_voltage_kv)
+    if not allowed_items:
+        print("No allowed_items parsed (Gemini unavailable or definition empty) — cannot determine technical eligibility")
+        return CriterionResult(
+            category="Technical",
+            name="Similar Work Experience",
+            required="See SIMILAR_WORK_OPTIONS thresholds",
+            actual="Could not determine — work-type definition unavailable",
+            eligible=False
+        ), definition_text
+    cutoff = date.today() - timedelta(days=365 * LOOKBACK_PERIOD_YEARS)
 
     works = WorkExperience.query.filter(
         WorkExperience.completion_date >= cutoff,
         WorkExperience.is_substantially_completed == True
     ).all()
 
+    print(f"WorkExperience rows in lookback window: {len(works)}")
+    for w in works:
+        print(f"  - id={w.id} project={w.project_name!r} equipment_combo={w.equipment_combo!r} "
+              f"voltage={w.voltage_class_kv} value_crore={w.work_value_crore}")
+
     qualifying = []
     for w in works:
-        if allowed_types and w.work_type not in allowed_types:
+        if allowed_items and not _equipment_combo_matches(w.equipment_combo, allowed_items):
+            print(f"  [SKIP] id={w.id}: equipment_combo {w.equipment_combo!r} not in allowed_items")
             continue
-        if allowed_combos and w.equipment_combo not in allowed_combos:
+        if min_voltage_kv and (w.voltage_class_kv or 0) < min_voltage_kv:
+            print(f"  [SKIP] id={w.id}: voltage {w.voltage_class_kv} below min {min_voltage_kv}")
             continue
-        if w.voltage_class_kv < min_kv:
+        if not _certificate_ok(w, CERTIFICATE_RULES):
+            print(f"  [SKIP] id={w.id}: certificate rules failed")
             continue
-        qualifying.append({"work": w, "percent": (w.work_value_crore / tender_value_crore) * 100})
+        percent = (w.work_value_crore / tender_value_crore) * 100 if tender_value_crore else 0
+        print(f"  [MATCH] id={w.id} project={w.project_name!r} -> {percent:.1f}% of tender value")
+        qualifying.append({"work": w, "percent": percent})
 
-    for opt in sorted(technical.get("similar_work_options", []), key=lambda o: -o["min_count"]):
+    print(f"Total qualifying works: {len(qualifying)}")
+    print("=== END DEBUG ===")
+
+    for opt in sorted(SIMILAR_WORK_OPTIONS, key=lambda o: -o["min_count"]):
         matches = [q for q in qualifying if q["percent"] >= opt["min_percent_of_tender_value"]]
         if len(matches) >= opt["min_count"]:
-            return CriterionResult(
-                category="Technical", name="Similar Work Experience",
-                required=f"{opt['min_count']} work(s) ≥{opt['min_percent_of_tender_value']}% of tender value",
+            result = CriterionResult(
+                category="Technical",
+                name="Similar Work Experience",
+                required=f"{opt['min_count']} work(s) >= {opt['min_percent_of_tender_value']}% of tender value",
                 actual=f"{len(matches)} qualifying work(s) found",
                 eligible=True
             )
+            return result, definition_text
 
     best = max(qualifying, key=lambda q: q["percent"], default=None)
-    return CriterionResult(
-        category="Technical", name="Similar Work Experience",
-        required="See similar_work_options thresholds",
+    result = CriterionResult(
+        category="Technical",
+        name="Similar Work Experience",
+        required="See SIMILAR_WORK_OPTIONS thresholds",
         actual=f"Best match {best['percent']:.0f}% of tender value" if best else "No qualifying work found",
         eligible=False
     )
+    return result, definition_text
 
-def evaluate_all_eligibility(sections, profile, tender_value_crore, technical_json):
-    results = []
-    results += evaluate_financial_eligibility(extract_financial_eligibility(sections), profile)
-    results.append(evaluate_technical_eligibility(technical_json, tender_value_crore))
-
-    verdict = "ELIGIBLE" if all(r.eligible for r in results) else "NOT ELIGIBLE"
-    failed = [r for r in results if not r.eligible]
-    reason = "; ".join(f"{r.name}: required {r.required}, actual {r.actual}" for r in failed) or "All criteria met"
-
-    return {
-        "verdict": verdict,
-        "reason": reason,
-        "criteria_json": json.dumps([asdict(r) for r in results])
-    }
+def _certificate_ok(w, cert_rules):
+    if w.certificate_issuer_type == "private_individual" and not cert_rules["private_individual_allowed"]:
+        return False
+    if w.certificate_issuer_type == "public_listed_company":
+        req = cert_rules["public_listed_requirements"]
+        if (w.issuer_avg_turnover_3yr_crore or 0) < req["min_avg_turnover_last_3yr_crore"]:
+            return False
+        if not ((w.issuer_listed_nse and "NSE" in req["must_be_listed_on"]) or
+                (w.issuer_listed_bse and "BSE" in req["must_be_listed_on"])):
+            return False
+        if not w.issuer_incorporation_date or \
+           (date.today() - w.issuer_incorporation_date).days / 365 < req["min_years_since_incorporation"]:
+            return False
+        for doc in req["required_supporting_docs"]:
+            if not getattr(w, f"has_{doc}", False):
+                return False
+    return True
 
 def evaluate_compliance_eligibility(requirements, profile):
     results = []
@@ -853,78 +924,97 @@ def extract_eligibility(sections):
 
     return requirements
 
-def parse_gemini(response):
-
-    if hasattr(response, "text"):
-
-        response = response.text
-
-    response = response.replace(
-        "```json",
-        ""
-    )
-
-    response = response.replace(
-        "```",
-        ""
-    )
-
-    response = response.strip()
-
+def call_groq(prompt, model_name="llama-3.3-70b-versatile"):
     try:
+        response = groq_client.chat.completions.create(
+            model=model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+        )
+        return response.choices[0].message.content
+    except Exception as e:
+        print(f"Groq call failed: {e}")
+        return None
 
-        return json.loads(response)
+def extract_similar_work_definition_text(sections):
+    """Pulls out just the definition sentence/clause as raw text."""
+    technical = sections.get("Special Technical Criteria", "")
+    technical = re.sub(r"\s+", " ", technical)
 
+    match = re.search(
+        r"Defin(?:i|a)tion of Similar (?:Nature of )?Works?\s*:?-?\s*(.+?)(?:\.\s|$)",
+        technical, re.IGNORECASE
+    )
+    return match.group(1).strip() if match else ""
+
+def parse_similar_work_items(definition_text):
+    if not definition_text:
+        return {"allowed_items": [], "min_voltage_kv": None}
+
+    prompt = f"""You are extracting a list of work-type items from a tender clause. Do NOT summarize, generalize, or paraphrase — copy each item's wording as closely to the original as possible. Split the clause on its separators (slashes, "or", commas) into individual items.
+
+Clause: "{definition_text}"
+
+Return ONLY valid JSON, no markdown, no preamble, no explanation:
+{{"allowed_items": ["item exactly as worded", "..."], "min_voltage_kv": null}}
+
+If a minimum voltage in kV is explicitly mentioned, put the number there; otherwise null."""
+
+    response_text = call_groq(prompt)
+
+    if response_text is None:
+        return {"allowed_items": [], "min_voltage_kv": None}
+
+    cleaned = response_text.replace("```json", "").replace("```", "").strip()
+    try:
+        parsed = json.loads(cleaned)
     except Exception:
+        print(f"Could not parse Groq response as JSON: {cleaned!r}")
+        return {"allowed_items": [], "min_voltage_kv": None}
 
-        return {
-
-        "lookback_period_years":7,
-
-        "similar_work_options":[],
-
-        "similar_work_definition":{
-
-            "allowed_work_types":[],
-
-            "allowed_equipment_combos":[],
-
-            "min_voltage_kv":0
-
-        },
-
-        "certificate_rules":{},
-
-        "mandatory_conditions":[]
-
-        }
+    if "allowed_items" not in parsed:
+        return {"allowed_items": [], "min_voltage_kv": None}
     
-def summarize_technical_criteria(technical):
+    # strip trailing "etc"/"etc." noise from items
+    cleaned_items = []
+    for item in parsed["allowed_items"]:
+        item = re.sub(r"\s*\betc\.?\s*$", "", item, flags=re.IGNORECASE).strip()
+        if item:
+            cleaned_items.append(item)
+    parsed["allowed_items"] = cleaned_items
+    return parsed
 
-    return {
-        "lookback_period_years": 7,
+def split_similar_work_items_regex(definition_text):
+    """Pure regex split on '/' — no LLM call, for comparison."""
+    if not definition_text:
+        return []
+    items = [item.strip() for item in definition_text.split("/")]
+    items = [i for i in items if i and i.lower() not in ("etc", "etc.")]
+    return items
 
-        "similar_work_options": [],
+def _normalize_for_match(text):
+    """Lowercase, collapse whitespace, strip slashes' surrounding spaces, drop trailing 'etc'."""
+    text = text.lower().strip()
+    text = re.sub(r"\s*/\s*", "/", text)        # "HT / LT" -> "ht/lt"
+    text = re.sub(r"\s+", " ", text)
+    text = re.sub(r"\s*\betc\.?\s*$", "", text)
+    return text.strip()
 
-        "similar_work_definition": {
-
-            "allowed_work_types": [],
-
-            "allowed_equipment_combos": [],
-
-            "min_voltage_kv": 0
-
-        },
-
-        "certificate_rules": {},
-
-        "mandatory_conditions": []
-    }
+def _equipment_combo_matches(work_combo, allowed_items):
+    """Fuzzy match: normalized substring match in either direction."""
+    if not work_combo:
+        return False
+    norm_combo = _normalize_for_match(work_combo)
+    for item in allowed_items:
+        norm_item = _normalize_for_match(item)
+        if norm_item in norm_combo or norm_combo in norm_item:
+            return True
+    return False
 
 @app.route("/tender", methods=["GET", "POST"])
 def tender():
     if request.method == "GET":
-        return render_template("tender_result.html", result= None , history = None , criteria=[])
+        return render_template("tender_result.html", result=None, history=None, criteria=[])
 
     pdf = request.files.get("pdf_file")
     if not pdf or pdf.filename == "":
@@ -933,12 +1023,10 @@ def tender():
 
     filename = secure_filename(pdf.filename)
 
-    # extract_pdf_text reads via pdf.read(), so do that before saving
     full_text = extract_pdf_text(pdf)
     sections = extract_sections(full_text)
     nit_data = build_nit_dictionary(sections)
 
-    # tender value, needed for technical % thresholds
     advertised_value_str = nit_data.get("Advertised Value", "0")
     try:
         tender_value_crore = float(re.sub(r"[^\d.]", "", advertised_value_str)) / 1e7
@@ -946,33 +1034,29 @@ def tender():
         tender_value_crore = 0.0
 
     # financial check
-
     financial_requirements = extract_eligibility(sections)
-
     profile = CompanyProfile.query.first()
-
-    financial_results = evaluate_financial_eligibility(financial_requirements,profile)
+    financial_results = evaluate_financial_eligibility(financial_requirements, profile)
 
     dashboard = build_dashboard_data(sections)
 
+    # technical check — hybrid: constants + small Gemini call inside, no separate summarize step
+    technical_result, definition_text = evaluate_technical_eligibility(sections, tender_value_crore)
 
-    # technical check
-
-    technical_section_text = sections.get("Special Technical Criteria","")
-
-    technical_json = summarize_technical_criteria(
-        technical_section_text
-    )
-
-    technical_result = evaluate_technical_eligibility(technical_json,tender_value_crore)
-
-
-
+    technical_display = {
+        "lookback_period_years": LOOKBACK_PERIOD_YEARS,
+        "similar_work_options": SIMILAR_WORK_OPTIONS,
+        "similar_work_definition": definition_text or "Not specified",
+        "mandatory_conditions": TECHNICAL_MANDATORY_CONDITIONS,
+        "eligible": technical_result.eligible,
+        "required": technical_result.required,
+        "actual": technical_result.actual,
+    }
     # combine results
-
     results = financial_results + [technical_result]
-    # compliance check (entity type / documents) — only runs if requirements were parsed
-    # for this tender; see note below
+
+    # compliance check not wired yet — extractor for TenderComplianceRequirement
+    # still needs to be written; skipping for now so this doesn't silently no-op as "pass"
 
     overall_eligible = all(r.eligible for r in results)
     failed = [r for r in results if not r.eligible]
@@ -989,18 +1073,16 @@ def tender():
     )
     db.session.add(history)
     db.session.commit()
-    result = {"nit_header": nit_data,"dashboard": dashboard, "eligibility": financial_results,"technical_eligibility": technical_json}
-    return render_template(
 
-        "tender_result.html",
+    result = {
+        "nit_header": nit_data,
+        "dashboard": dashboard,
+        "eligibility": [asdict(r) for r in financial_results],
+        "technical_eligibility": technical_display,
+    }
 
-        result=result,
+    return render_template("tender_result.html", result=result, history=history, criteria=results)
 
-        history=history,
-
-        criteria=results
-
-    )
 @app.route("/services")
 def services():
     all_services = Service.query.all()

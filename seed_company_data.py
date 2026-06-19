@@ -44,6 +44,17 @@ with app.app_context():
         ),
         WorkExperience(
             company_id=profile.id,
+            project_name="Station Facade Lighting Upgrade",
+            work_value_crore=10.0,
+            completion_date=date(2023, 1, 15),
+            is_substantially_completed=True,
+            work_type="Electrification",
+            equipment_combo="Street Lighting",
+            voltage_class_kv=0,
+            certificate_issuer_type="govt"
+        ),
+        WorkExperience(
+            company_id=profile.id,
             project_name="Panel Overhauling Project Y",
             work_value_crore=8.0,
             completion_date=date(2022, 9, 15),
