@@ -80,7 +80,7 @@ groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 
 app = Flask(__name__, static_folder="static")
-app.secret_key = "trident_secret_key_2024"
+app.secret_key = os.environ.get("SECRET_KEY")
 UPLOAD_FOLDER = "static/uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -1830,7 +1830,4 @@ if __name__ == "__main__":
 
         from seed_company_data import seed_database
         if CompanyProfile.query.first() is None:
-            seed_database()
-
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host="0.0.0.0", port=port, debug=True, use_reloader=False)
+            seed_database(db, CompanyProfile, FinancialYear, WorkExperience)
