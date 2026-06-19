@@ -1,24 +1,15 @@
-from app import app, db
-from app import (
-    CompanyProfile,
-    FinancialYear,
-    WorkExperience,
-    CompanyDocument,
-)
-from datetime import date
+from app import db
+from app import CompanyProfile, FinancialYear, WorkExperience  # adjust import if these live in app.py directly
 
-with app.app_context():
-    db.drop_all()
-    db.create_all()
-
-    # ---------- Company Profile ----------
+def seed_database():
     profile = CompanyProfile(
         electrical_contractor_license="EC-12345",
         contractor_class="A",
         established_year=2008,
-        entity_type="Partnership",   # Proprietary / Company / Partnership / JV / Society / Trust / HUF / LLP
+        entity_type="Partnership",
         pan_number="ABCDE1234F"
     )
+
     db.session.add(profile)
     db.session.commit()  # commit now so profile.id exists for FKs below
 
@@ -75,17 +66,6 @@ with app.app_context():
         ),
     ])
 
-    # ---------- Company Documents (Compliance / Technical-Compliance credentials) ----------
-    db.session.add_all([
-        CompanyDocument(company_id=profile.id, document_type="ESIC_REGISTRATION", has_document=True, document_number="ESIC-998877", valid_until=date(2027, 3, 31)),
-        CompanyDocument(company_id=profile.id, document_type="ELECTRICAL_CONTRACTOR_LICENSE", has_document=True, document_number="EC-12345", valid_until=date(2027, 12, 31)),
-        CompanyDocument(company_id=profile.id, document_type="PARTNERSHIP_DEED", has_document=True),
-        CompanyDocument(company_id=profile.id, document_type="PARTNERSHIP_JV_HUF_LLP_CERTIFICATE", has_document=True),
-        CompanyDocument(company_id=profile.id, document_type="ANNEXURE_V_A", has_document=False),
-        CompanyDocument(company_id=profile.id, document_type="SHRAMIKKALYAN_REGISTRATION", has_document=True),
-        CompanyDocument(company_id=profile.id, document_type="SOLE_PROPRIETOR_UNDERTAKING", has_document=False),
-        CompanyDocument(company_id=profile.id, document_type="POWER_OF_ATTORNEY", has_document=True),
-    ])
-
+    
     db.session.commit()
     print("Database reset and seeded successfully.")
