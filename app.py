@@ -1,23 +1,16 @@
 from flask import request, render_template, redirect, url_for, flash
-from werkzeug.utils import secure_filename
 from dataclasses import asdict
 from flask import Flask, json, render_template, request, redirect
 from flask_sqlalchemy import SQLAlchemy, session
 from sqlalchemy import or_, text
-from werkzeug.utils import secure_filename
-from pptx import Presentation
 from flask import send_file
 import fitz
 from dotenv import load_dotenv
-import pytesseract
-from PIL import Image
-import io
 from datetime import date, datetime, timedelta
 import json
 import os
 from groq import Groq
 import re
-from dataclasses import asdict
 import time
 
 load_dotenv()
@@ -922,9 +915,17 @@ def extract_eligibility(sections):
 
     return requirements
 
+groq_client = None
+
+def get_groq_client():
+    global groq_client
+    if groq_client is None:
+        groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
+    return groq_client
+
 def call_groq(prompt, model_name="llama-3.3-70b-versatile"):
     try:
-        response = groq_client.chat.completions.create(
+        response = get_groq_client().chat.completions.create(
             model=model_name,
             messages=[{"role": "user", "content": prompt}],
             temperature=0,
@@ -1831,3 +1832,6 @@ if __name__ == "__main__":
         from seed_company_data import seed_database
         if CompanyProfile.query.first() is None:
             seed_database(db, CompanyProfile, FinancialYear, WorkExperience)
+
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host="0.0.0.0", port=port, debug=False, use_reloader=False)
