@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIDENT — Admin Login</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{
+    font-family:Inter,sans-serif;
+    background:#f5f5f5;
+}
+</style>
+</head>
+<body class="min-h-screen flex items-center justify-center">
+
+<div class="bg-white rounded-xl border shadow-sm p-10 w-full max-w-sm">
+
+    <h1 class="text-2xl font-bold mb-1 text-center">TRIDENT Admin</h1>
+    <p class="text-gray-500 text-sm mb-6 text-center">Enter the admin password to manage company data</p>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg p-3 mb-4">
+          {{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="space-y-4">
+        <input
+            type="password"
+            name="password"
+            placeholder="Admin password"
+            autofocus
+            required
+            class="border p-3 rounded w-full"
+        />
+        <button
+            type="submit"
+            class="bg-blue-600 text-white px-6 py-3 rounded w-full font-semibold"
+        >
+            Sign in
+        </button>
+    </form>
+
+    <a href="/" class="block text-center text-sm text-gray-400 hover:text-gray-600 mt-6">
+        ← Back to site
+    </a>
+
+</div>
+
+</body>
+</html>

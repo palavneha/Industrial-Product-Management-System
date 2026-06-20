@@ -1,7 +1,7 @@
-from flask import request, render_template, redirect, url_for, flash
+from flask import request, render_template, redirect, url_for, flash, session
 from dataclasses import asdict
 from flask import Flask, json, render_template, request, redirect
-from flask_sqlalchemy import SQLAlchemy, session
+from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import or_, text
 from flask import send_file
 import fitz
@@ -13,8 +13,10 @@ from groq import Groq
 import re
 import time
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 load_dotenv()
 from dataclasses import dataclass
+from functools import wraps
 
 @dataclass
 class CriterionResult:
@@ -74,6 +76,39 @@ groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
 
 app = Flask(__name__, static_folder="static")
 app.secret_key = os.environ.get("SECRET_KEY")
+
+# Store PASSWORD HASHES in the environment, never plaintext passwords.
+# Generate a hash once with:
+#   python -c "from werkzeug.security import generate_password_hash as g; print(g('your-password'))"
+# and put the resulting string in SITE_PASSWORD_HASH / ADMIN_PASSWORD_HASH.
+SITE_PASSWORD_HASH = os.environ.get("SITE_PASSWORD_HASH")
+ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH")
+
+# Endpoints reachable without being logged in to the site at all.
+PUBLIC_ENDPOINTS = {"site_login", "static", "favicon"}
+
+
+@app.before_request
+def require_site_login():
+    """Site-wide gate: every page needs the shared site password,
+    except the login page itself and static assets."""
+    if request.endpoint in PUBLIC_ENDPOINTS or request.endpoint is None:
+        return
+    if not session.get("site_authenticated"):
+        return redirect(url_for("site_login", next=request.path))
+
+
+def login_required(f):
+    """Stricter gate on top of the site login: only employees who also
+    know the admin password may modify the company database
+    (company profile, financial years, work experience, documents)."""
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if not session.get("is_admin"):
+            return redirect(url_for("admin_login"))
+        return f(*args, **kwargs)
+    return decorated
+
 UPLOAD_FOLDER = "static/uploads"
 app.config["UPLOAD_FOLDER"] = UPLOAD_FOLDER
 
@@ -394,37 +429,6 @@ def edit_product(id):
 
     return render_template("edit_product.html", product=product)
 
-
-# @app.route("/generate-ppt/<int:id>")
-# def generate_ppt(id):
-
-#     product = Product.query.get_or_404(id)
-
-#     prs = Presentation()
-
-#     slide = prs.slides.add_slide(prs.slide_layouts[0])
-#     slide.shapes.title.text = product.name
-
-#     if len(slide.placeholders) > 1:
-#         slide.placeholders[1].text = product.category
-
-#     slide2 = prs.slides.add_slide(prs.slide_layouts[1])
-#     slide2.shapes.title.text = "Description"
-#     slide2.placeholders[1].text = product.description
-
-#     slide3 = prs.slides.add_slide(prs.slide_layouts[1])
-#     slide3.shapes.title.text = "Features"
-#     slide3.placeholders[1].text = product.features
-
-#     slide4 = prs.slides.add_slide(prs.slide_layouts[1])
-#     slide4.shapes.title.text = "Applications"
-#     slide4.placeholders[1].text = product.applications
-
-#     filename = f"{product.name}.pptx"
-
-#     prs.save(filename)
-
-#     return send_file(filename, as_attachment=True)
 
 def extract_pdf_text(pdf):
     text = ""
@@ -769,23 +773,23 @@ def evaluate_financial_eligibility(requirements, profile):
     return results
 
 def evaluate_technical_eligibility(sections, tender_value_crore):
-    definition_text = extract_similar_work_definition_text(sections)
-    parsed = parse_similar_work_items(definition_text)
+    raw_chunk = extract_similar_work_raw_chunk(sections)
+    parsed = parse_similar_work_items(raw_chunk)
 
     allowed_items = parsed.get("allowed_items", [])
     min_voltage_kv = parsed.get("min_voltage_kv") or 0
+    definition_text = parsed.get("clean_definition_text") or raw_chunk
 
-    print("=== TECHNICAL ELIGIBILITY DEBUG ===")
-    print("Parsed allowed_items:", allowed_items)
-    print("Parsed min_voltage_kv:", min_voltage_kv)
     if not allowed_items:
-        return CriterionResult(
+        result = CriterionResult(
             category="Technical",
             name="Similar Work Experience",
             required="See SIMILAR_WORK_OPTIONS thresholds",
             actual="Could not determine — work-type definition unavailable",
             eligible=False
-        ), definition_text
+        )
+        return result, definition_text, [], []
+
     cutoff = date.today() - timedelta(days=365 * LOOKBACK_PERIOD_YEARS)
 
     works = WorkExperience.query.filter(
@@ -793,32 +797,42 @@ def evaluate_technical_eligibility(sections, tender_value_crore):
         WorkExperience.is_substantially_completed == True
     ).all()
 
-    print(f"WorkExperience rows in lookback window: {len(works)}")
-    for w in works:
-        print(f"  - id={w.id} project={w.project_name!r} equipment_combo={w.equipment_combo!r} "
-              f"voltage={w.voltage_class_kv} value_crore={w.work_value_crore}")
+    match_results, match_ok = _equipment_combo_matches_batch(works, allowed_items)
+
+    if not match_ok:
+        result = CriterionResult(
+            category="Technical",
+            name="Similar Work Experience",
+            required="See SIMILAR_WORK_OPTIONS thresholds",
+            actual="Could not determine — work-type matching service unavailable",
+            eligible=False
+        )
+        return result, definition_text, [], []
 
     qualifying = []
+    near_misses = []
     for w in works:
-        if allowed_items and not _equipment_combo_matches(w.equipment_combo, allowed_items):
-            print(f"  [SKIP] id={w.id}: equipment_combo {w.equipment_combo!r} not in allowed_items")
+        if not match_results.get(w.id, False):
             continue
         if min_voltage_kv and (w.voltage_class_kv or 0) < min_voltage_kv:
-            print(f"  [SKIP] id={w.id}: voltage {w.voltage_class_kv} below min {min_voltage_kv}")
             continue
-        if not _certificate_ok(w, CERTIFICATE_RULES):
-            print(f"  [SKIP] id={w.id}: certificate rules failed")
+        cert_ok, cert_reason = _certificate_ok(w, CERTIFICATE_RULES)
+        if not cert_ok:
             continue
         percent = (w.work_value_crore / tender_value_crore) * 100 if tender_value_crore else 0
-        print(f"  [MATCH] id={w.id} project={w.project_name!r} -> {percent:.1f}% of tender value")
-        qualifying.append({"work": w, "percent": percent})
+        entry = {
+            "project_name": w.project_name,
+            "percent": percent,
+            "completion_date": w.completion_date,
+            "work_value_crore": w.work_value_crore,
+        }
+        qualifying.append({"work": w, "percent": percent, "entry": entry})
+        near_misses.append(entry)
 
-    print(f"Total qualifying works: {len(qualifying)}")
-    print("=== END DEBUG ===")
-
-    for opt in sorted(SIMILAR_WORK_OPTIONS, key=lambda o: -o["min_count"]):
+    for opt in sorted(SIMILAR_WORK_OPTIONS, key=lambda o: o["min_count"]):
         matches = [q for q in qualifying if q["percent"] >= opt["min_percent_of_tender_value"]]
         if len(matches) >= opt["min_count"]:
+            matched_entries = [m["entry"] for m in matches]
             result = CriterionResult(
                 category="Technical",
                 name="Similar Work Experience",
@@ -826,7 +840,9 @@ def evaluate_technical_eligibility(sections, tender_value_crore):
                 actual=f"{len(matches)} qualifying work(s) found",
                 eligible=True
             )
-            return result, definition_text
+            return result, definition_text, matched_entries, []
+
+    near_misses.sort(key=lambda e: e["percent"], reverse=True)
 
     best = max(qualifying, key=lambda q: q["percent"], default=None)
     result = CriterionResult(
@@ -836,25 +852,25 @@ def evaluate_technical_eligibility(sections, tender_value_crore):
         actual=f"Best match {best['percent']:.0f}% of tender value" if best else "No qualifying work found",
         eligible=False
     )
-    return result, definition_text
+    return result, definition_text, [], near_misses
 
 def _certificate_ok(w, cert_rules):
     if w.certificate_issuer_type == "private_individual" and not cert_rules["private_individual_allowed"]:
-        return False
+        return False, "Certificate from private individual — not considered"
     if w.certificate_issuer_type == "public_listed_company":
         req = cert_rules["public_listed_requirements"]
         if (w.issuer_avg_turnover_3yr_crore or 0) < req["min_avg_turnover_last_3yr_crore"]:
-            return False
+            return False, "Issuer turnover below Rs. 500 crore threshold"
         if not ((w.issuer_listed_nse and "NSE" in req["must_be_listed_on"]) or
                 (w.issuer_listed_bse and "BSE" in req["must_be_listed_on"])):
-            return False
+            return False, "Issuer not listed on NSE or BSE"
         if not w.issuer_incorporation_date or \
            (date.today() - w.issuer_incorporation_date).days / 365 < req["min_years_since_incorporation"]:
-            return False
+            return False, "Issuer incorporated less than 5 years before tender closing"
         for doc in req["required_supporting_docs"]:
             if not getattr(w, f"has_{doc}", False):
-                return False
-    return True
+                return False, f"Missing supporting document: {doc.replace('_', ' ')}"
+    return True, None
 
 def evaluate_compliance_eligibility(requirements, profile):
     results = []
@@ -923,7 +939,7 @@ def get_groq_client():
         groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     return groq_client
 
-def call_groq(prompt, model_name="llama-3.3-70b-versatile"):
+def call_groq(prompt, model_name="openai/gpt-oss-120b"):
     try:
         response = get_groq_client().chat.completions.create(
             model=model_name,
@@ -935,52 +951,61 @@ def call_groq(prompt, model_name="llama-3.3-70b-versatile"):
         print(f"Groq call failed: {e}")
         return None
 
-def extract_similar_work_definition_text(sections):
-    """Pulls out just the definition sentence/clause as raw text."""
+def extract_similar_work_raw_chunk(sections):
+    """Returns a generous raw chunk starting at 'Definition of Similar Work'.
+    Boundary-finding (where the clause actually ends) is left to the LLM in
+    parse_similar_work_items, since PDF extraction doesn't reliably preserve
+    paragraph structure for regex-based boundary detection."""
     technical = sections.get("Special Technical Criteria", "")
     technical = re.sub(r"\s+", " ", technical)
 
-    match = re.search(
-        r"Defin(?:i|a)tion of Similar (?:Nature of )?Works?\s*:?-?\s*(.+?)(?:\.\s|$)",
+    start_match = re.search(
+        r"Defin(?:i|a)tion of Similar (?:Nature of )?Works?\s*:?-?\s*",
         technical, re.IGNORECASE
     )
-    return match.group(1).strip() if match else ""
+    if not start_match:
+        return ""
 
-def parse_similar_work_items(definition_text):
-    if not definition_text:
-        return {"allowed_items": [], "min_voltage_kv": None}
+    return technical[start_match.end():start_match.end() + 1500].strip()
 
-    prompt = f"""You are extracting a list of work-type items from a tender clause. Do NOT summarize, generalize, or paraphrase — copy each item's wording as closely to the original as possible. Split the clause on its separators (slashes, "or", commas) into individual items.
+def parse_similar_work_items(raw_chunk):
+    if not raw_chunk:
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
 
-Clause: "{definition_text}"
+    prompt = f"""Below is raw text extracted from a tender document, starting right after the phrase "Definition of Similar Work" or "Definition of Similar Nature of Works". This text may run on past the actual definition clause into unrelated instructions (e.g. "Bidders shall confirm...", new numbered conditions, certificate rules, etc.) — text extraction from the PDF does not reliably preserve paragraph breaks, so you must judge where the definition clause actually ends based on meaning, not formatting.
+
+Extract ONLY the work-type items that are part of the Definition of Similar Work clause itself. Stop as soon as the text moves on to a different topic (e.g. certification rules, bidder confirmations, new clause numbers unrelated to work-type definitions). Do NOT summarize or paraphrase items — copy each item's wording as close to the original as possible. Split on separators (slashes, "or", commas, roman numerals like "i.", "ii.").
+
+Raw text:
+\"\"\"{raw_chunk}\"\"\"
 
 Return ONLY valid JSON, no markdown, no preamble, no explanation:
-{{"allowed_items": ["item exactly as worded", "..."], "min_voltage_kv": null}}
+{{"allowed_items": ["item exactly as worded", "..."], "min_voltage_kv": null, "clean_definition_text": "the full definition clause, cleaned up, for display to a user"}}
 
-If a minimum voltage in kV is explicitly mentioned, put the number there; otherwise null."""
+If a minimum voltage in kV is explicitly mentioned as part of the definition (e.g. "for 11 KV or higher capacity substations"), put the number there; otherwise null."""
 
     response_text = call_groq(prompt)
 
     if response_text is None:
-        return {"allowed_items": [], "min_voltage_kv": None}
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
 
     cleaned = response_text.replace("```json", "").replace("```", "").strip()
     try:
         parsed = json.loads(cleaned)
     except Exception:
         print(f"Could not parse Groq response as JSON: {cleaned!r}")
-        return {"allowed_items": [], "min_voltage_kv": None}
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
 
     if "allowed_items" not in parsed:
-        return {"allowed_items": [], "min_voltage_kv": None}
-    
-    # strip trailing "etc"/"etc." noise from items
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
+
     cleaned_items = []
     for item in parsed["allowed_items"]:
         item = re.sub(r"\s*\betc\.?\s*$", "", item, flags=re.IGNORECASE).strip()
         if item:
             cleaned_items.append(item)
     parsed["allowed_items"] = cleaned_items
+    parsed.setdefault("clean_definition_text", "")
     return parsed
 
 def split_similar_work_items_regex(definition_text):
@@ -1009,6 +1034,54 @@ def _equipment_combo_matches(work_combo, allowed_items):
         if norm_item in norm_combo or norm_combo in norm_item:
             return True
     return False
+
+def _equipment_combo_matches_batch(works, allowed_items):
+    """
+    Ask the LLM to judge, for each work's equipment_combo, whether it falls
+    under any of the tender's allowed work-type categories — semantically,
+    not just by literal substring.
+
+    Returns (matches, ok):
+      matches: dict {work.id: bool}
+      ok: False if the Groq call/parse failed (caller should treat this as
+          "could not determine," not as a confident non-match)
+    """
+    if not allowed_items or not works:
+        return {w.id: False for w in works}, True
+
+    work_list_str = "\n".join(
+        f'{w.id}: "{w.equipment_combo}"' for w in works
+    )
+    allowed_str = "\n".join(f"- {item}" for item in allowed_items)
+
+    prompt = f"""You are checking whether each company's past work falls under any of the tender's allowed work-type categories. Judge based on real-world engineering meaning, not just literal text overlap — e.g. "HT/LT Transformer & Switchgear" work should be considered part of "HT/LT substation work" since transformers and switchgear are substation equipment.
+
+        Allowed work-type categories for this tender:
+        {allowed_str}
+
+        Company's past works (id: equipment description):
+        {work_list_str}
+
+        For each work id, decide true/false whether it falls under any allowed category above.
+
+        Return ONLY valid JSON, no markdown, no preamble:
+        {{"matches": {{"<work_id>": true_or_false, ...}}}}"""
+
+    response_text = call_groq(prompt)
+    if response_text is None:
+        return {w.id: False for w in works}, False
+
+    cleaned = response_text.replace("```json", "").replace("```", "").strip()
+    try:
+        parsed = json.loads(cleaned)
+        raw_matches = parsed.get("matches", {})
+        matches = {int(k): bool(v) for k, v in raw_matches.items()}
+        for w in works:
+            matches.setdefault(w.id, False)
+        return matches, True
+    except Exception:
+        print(f"Could not parse Groq batch-match response: {cleaned!r}")
+        return {w.id: False for w in works}, False
 
 @app.route("/tender", methods=["GET", "POST"])
 def tender():
@@ -1039,8 +1112,7 @@ def tender():
 
     dashboard = build_dashboard_data(sections)
 
-    technical_result, definition_text = evaluate_technical_eligibility(sections, tender_value_crore)
-
+    technical_result, definition_text, matched_works, near_miss_works = evaluate_technical_eligibility(sections, tender_value_crore)
     technical_display = {
         "lookback_period_years": LOOKBACK_PERIOD_YEARS,
         "similar_work_options": SIMILAR_WORK_OPTIONS,
@@ -1049,6 +1121,11 @@ def tender():
         "eligible": technical_result.eligible,
         "required": technical_result.required,
         "actual": technical_result.actual,
+        "matched_works": matched_works,
+        "near_miss_works": near_miss_works,
+        "matched_works": matched_works,
+        "near_miss_works": near_miss_works,
+        "certificate_conditions_checked": True,  # these are always enforced via _certificate_ok
     }
     # combine results
     results = financial_results + [technical_result]
@@ -1080,6 +1157,260 @@ def tender():
     }
 
     return render_template("tender_result.html", result=result, history=history, criteria=results)
+
+
+# ---------- AUTH ----------
+
+@app.route("/login", methods=["GET", "POST"])
+def site_login():
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        next_url = request.form.get("next") or url_for("home")
+        if SITE_PASSWORD_HASH and check_password_hash(SITE_PASSWORD_HASH, password):
+            session["site_authenticated"] = True
+            return redirect(next_url)
+        flash("Incorrect password.")
+        return redirect(url_for("site_login", next=next_url))
+    next_url = request.args.get("next", "")
+    return render_template("login.html", next=next_url)
+
+
+@app.route("/logout")
+def site_logout():
+    session.clear()
+    return redirect(url_for("site_login"))
+
+
+@app.route("/admin/login", methods=["GET", "POST"])
+def admin_login():
+    if request.method == "POST":
+        password = request.form.get("password", "")
+        if ADMIN_PASSWORD_HASH and check_password_hash(ADMIN_PASSWORD_HASH, password):
+            session["is_admin"] = True
+            return redirect(url_for("admin_dashboard"))
+        flash("Incorrect password.")
+        return redirect(url_for("admin_login"))
+    return render_template("admin/login.html")
+
+
+@app.route("/admin/logout")
+def admin_logout():
+    session.pop("is_admin", None)
+    return redirect(url_for("admin_login"))
+
+
+# ---------- ADMIN DASHBOARD ----------
+
+@app.route("/admin")
+@login_required
+def admin_dashboard():
+    return render_template("admin/dashboard.html")
+
+
+# ---------- COMPANY PROFILE ----------
+
+@app.route("/admin/company-profile", methods=["GET", "POST"])
+@login_required
+def admin_company_profile():
+    profile = CompanyProfile.query.first()
+    if request.method == "POST":
+        if profile is None:
+            profile = CompanyProfile()
+            db.session.add(profile)
+        profile.electrical_contractor_license = request.form.get("electrical_contractor_license")
+        profile.contractor_class = request.form.get("contractor_class")
+        profile.established_year = request.form.get("established_year") or None
+        profile.entity_type = request.form.get("entity_type")
+        profile.pan_number = request.form.get("pan_number")
+        db.session.commit()
+        flash("Company profile saved.")
+        return redirect(url_for("admin_company_profile"))
+    return render_template("admin/company_profile.html", profile=profile)
+
+
+# ---------- FINANCIAL YEARS ----------
+
+@app.route("/admin/financial-years")
+@login_required
+def admin_financial_years():
+    profile = CompanyProfile.query.first()
+    years = FinancialYear.query.order_by(FinancialYear.financial_year_end.desc()).all() if profile else []
+    return render_template("admin/financial_years.html", years=years, profile=profile)
+
+
+@app.route("/admin/financial-years/add", methods=["GET", "POST"])
+@login_required
+def admin_financial_year_add():
+    profile = CompanyProfile.query.first()
+    if not profile:
+        flash("Create a company profile first.")
+        return redirect(url_for("admin_company_profile"))
+    if request.method == "POST":
+        fy = FinancialYear(
+            company_id=profile.id,
+            financial_year_end=int(request.form["financial_year_end"]),
+            annual_turnover_crore=float(request.form["annual_turnover_crore"]),
+            net_worth_crore=float(request.form["net_worth_crore"]) if request.form.get("net_worth_crore") else None,
+            working_capital_crore=float(request.form["working_capital_crore"]) if request.form.get("working_capital_crore") else None,
+        )
+        db.session.add(fy)
+        db.session.commit()
+        flash("Financial year added.")
+        return redirect(url_for("admin_financial_years"))
+    return render_template("admin/financial_year_form.html", year=None)
+
+
+@app.route("/admin/financial-years/<int:id>/edit", methods=["GET", "POST"])
+@login_required
+def admin_financial_year_edit(id):
+    fy = FinancialYear.query.get_or_404(id)
+    if request.method == "POST":
+        fy.financial_year_end = int(request.form["financial_year_end"])
+        fy.annual_turnover_crore = float(request.form["annual_turnover_crore"])
+        fy.net_worth_crore = float(request.form["net_worth_crore"]) if request.form.get("net_worth_crore") else None
+        fy.working_capital_crore = float(request.form["working_capital_crore"]) if request.form.get("working_capital_crore") else None
+        db.session.commit()
+        flash("Financial year updated.")
+        return redirect(url_for("admin_financial_years"))
+    return render_template("admin/financial_year_form.html", year=fy)
+
+
+@app.route("/admin/financial-years/<int:id>/delete", methods=["POST"])
+@login_required
+def admin_financial_year_delete(id):
+    fy = FinancialYear.query.get_or_404(id)
+    db.session.delete(fy)
+    db.session.commit()
+    flash("Financial year deleted.")
+    return redirect(url_for("admin_financial_years"))
+
+
+# ---------- WORK EXPERIENCE ----------
+
+@app.route("/admin/work-experience")
+@login_required
+def admin_work_experience():
+    works = WorkExperience.query.order_by(WorkExperience.completion_date.desc()).all()
+    return render_template("admin/work_experience_list.html", works=works)
+
+
+def _populate_work_experience(w, form):
+    w.project_name = form.get("project_name")
+    w.work_value_crore = float(form["work_value_crore"])
+    w.completion_date = datetime.strptime(form["completion_date"], "%Y-%m-%d").date()
+    w.is_substantially_completed = form.get("is_substantially_completed") == "on"
+    w.work_type = form.get("work_type")
+    w.equipment_combo = form.get("equipment_combo")
+    w.voltage_class_kv = float(form["voltage_class_kv"]) if form.get("voltage_class_kv") else None
+    w.certificate_issuer_type = form.get("certificate_issuer_type")
+    w.issuer_avg_turnover_3yr_crore = float(form["issuer_avg_turnover_3yr_crore"]) if form.get("issuer_avg_turnover_3yr_crore") else None
+    w.issuer_listed_nse = form.get("issuer_listed_nse") == "on"
+    w.issuer_listed_bse = form.get("issuer_listed_bse") == "on"
+    w.issuer_incorporation_date = (
+        datetime.strptime(form["issuer_incorporation_date"], "%Y-%m-%d").date()
+        if form.get("issuer_incorporation_date") else None
+    )
+    w.has_work_order_copy = form.get("has_work_order_copy") == "on"
+    w.has_boq = form.get("has_boq") == "on"
+    w.has_ca_certified_payment_details = form.get("has_ca_certified_payment_details") == "on"
+    w.has_tds_certificates = form.get("has_tds_certificates") == "on"
+    w.has_final_bill_copy = form.get("has_final_bill_copy") == "on"
+
+
+@app.route("/admin/work-experience/add", methods=["GET", "POST"])
+@login_required
+def admin_work_experience_add():
+    profile = CompanyProfile.query.first()
+    if not profile:
+        flash("Create a company profile first.")
+        return redirect(url_for("admin_company_profile"))
+    if request.method == "POST":
+        w = WorkExperience(company_id=profile.id)
+        _populate_work_experience(w, request.form)
+        db.session.add(w)
+        db.session.commit()
+        flash("Work experience added.")
+        return redirect(url_for("admin_work_experience"))
+    return render_template("admin/work_experience_form.html", work=None)
+
+
+@app.route("/admin/work-experience/<int:id>/edit", methods=["GET", "POST"])
+@login_required
+def admin_work_experience_edit(id):
+    w = WorkExperience.query.get_or_404(id)
+    if request.method == "POST":
+        _populate_work_experience(w, request.form)
+        db.session.commit()
+        flash("Work experience updated.")
+        return redirect(url_for("admin_work_experience"))
+    return render_template("admin/work_experience_form.html", work=w)
+
+
+@app.route("/admin/work-experience/<int:id>/delete", methods=["POST"])
+@login_required
+def admin_work_experience_delete(id):
+    w = WorkExperience.query.get_or_404(id)
+    db.session.delete(w)
+    db.session.commit()
+    flash("Work experience deleted.")
+    return redirect(url_for("admin_work_experience"))
+
+
+# ---------- COMPANY DOCUMENTS ----------
+
+@app.route("/admin/documents")
+@login_required
+def admin_documents():
+    docs = CompanyDocument.query.order_by(CompanyDocument.document_type).all()
+    return render_template("admin/documents_list.html", docs=docs)
+
+
+def _populate_document(d, form):
+    d.document_type = form.get("document_type")
+    d.has_document = form.get("has_document") == "on"
+    d.document_number = form.get("document_number")
+    d.issuing_authority = form.get("issuing_authority")
+    d.valid_from = datetime.strptime(form["valid_from"], "%Y-%m-%d").date() if form.get("valid_from") else None
+    d.valid_until = datetime.strptime(form["valid_until"], "%Y-%m-%d").date() if form.get("valid_until") else None
+
+
+@app.route("/admin/documents/add", methods=["GET", "POST"])
+@login_required
+def admin_document_add():
+    profile = CompanyProfile.query.first()
+    if not profile:
+        flash("Create a company profile first.")
+        return redirect(url_for("admin_company_profile"))
+    if request.method == "POST":
+        d = CompanyDocument(company_id=profile.id)
+        _populate_document(d, request.form)
+        db.session.add(d)
+        db.session.commit()
+        flash("Document added.")
+        return redirect(url_for("admin_documents"))
+    return render_template("admin/document_form.html", doc=None)
+
+
+@app.route("/admin/documents/<int:id>/edit", methods=["GET", "POST"])
+@login_required
+def admin_document_edit(id):
+    d = CompanyDocument.query.get_or_404(id)
+    if request.method == "POST":
+        _populate_document(d, request.form)
+        db.session.commit()
+        flash("Document updated.")
+        return redirect(url_for("admin_documents"))
+    return render_template("admin/document_form.html", doc=d)
+
+
+@app.route("/admin/documents/<int:id>/delete", methods=["POST"])
+@login_required
+def admin_document_delete(id):
+    d = CompanyDocument.query.get_or_404(id)
+    db.session.delete(d)
+    db.session.commit()
+    flash("Document deleted.")
+    return redirect(url_for("admin_documents"))
 
 @app.route("/services")
 def services():
@@ -1184,7 +1515,7 @@ Make the content professional, technically accurate, and specific to the Indian 
 """
 
     response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
     )
     text_resp = (
@@ -1261,7 +1592,7 @@ Make the content professional, technically accurate, and specific to the Indian 
 """
 
     response = groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model="openai/gpt-oss-120b",
         messages=[{"role": "user", "content": prompt}],
     )
     text_resp = (
@@ -1303,7 +1634,7 @@ Respond ONLY in this exact JSON format:
 {{"tagline": "compelling tagline", "overview": "3-4 detailed paragraphs about this service", "key_features": ["feature1", "feature2", "feature3", "feature4", "feature5", "feature6"], "applications": ["app1", "app2", "app3", "app4", "app5"], "process_steps": [{{"step": "title", "description": "desc"}}, {{"step": "title", "description": "desc"}}, {{"step": "title", "description": "desc"}}, {{"step": "title", "description": "desc"}}], "why_choose_us": ["reason1", "reason2", "reason3", "reason4"], "technical_specs": "paragraph about standards and compliance"}}"""
 
                 response = groq_client.chat.completions.create(
-                    model="llama-3.3-70b-versatile",
+                    model="openai/gpt-oss-120b",
                     messages=[{"role": "user", "content": prompt}],
                 )
                 text_resp = (
@@ -1355,475 +1686,6 @@ Respond ONLY in this exact JSON format:
 
     return redirect(request.referrer or "/services")
 
-
-# def _replace_text_in_slide(slide, replacements):
-#     def process_shapes(shapes):
-#         for shape in shapes:
-#             # Recurse into groups
-#             if shape.shape_type == 6:  # MSO_SHAPE_TYPE.GROUP
-#                 process_shapes(shape.shapes)
-#                 continue
-#             if not shape.has_text_frame:
-#                 continue
-#             for para in shape.text_frame.paragraphs:
-#                 # Merge all runs to handle split placeholders
-#                 full_text = "".join(run.text for run in para.runs)
-#                 replaced = False
-#                 for placeholder, value in replacements.items():
-#                     if placeholder in full_text:
-#                         full_text = full_text.replace(placeholder, value)
-#                         replaced = True
-#                 if replaced and para.runs:
-#                     para.runs[0].text = full_text
-#                     for run in para.runs[1:]:
-#                         run.text = ""
-#                 elif not replaced:
-#                     # Per-run replacement for non-split cases
-#                     for run in para.runs:
-#                         for placeholder, value in replacements.items():
-#                             if placeholder in run.text:
-#                                 run.text = run.text.replace(placeholder, value)
-
-#     process_shapes(slide.shapes)
-
-# def shorten_title(text, max_length=28):
-
-#     if not text:
-
-#         return ""
-
-#     text = text.strip()
-
-#     if len(text) <= max_length:
-
-#         return text
-
-#     words = text.split()
-
-#     result = ""
-
-#     for word in words:
-
-#         candidate = result + " " + word if result else word
-
-#         if len(candidate) > max_length - 3:
-
-#             break
-
-#         result = candidate
-
-#     return result + "..."
-
-# def _replace_slide_image(slide, image_url, target_index=1):
-#     import requests
-
-#     try:
-
-#         response = requests.get(image_url, timeout=10)
-
-#         response.raise_for_status()
-
-#         image_bytes = response.content
-
-#         pictures = []
-
-#         for shape in slide.shapes:
-
-#             if shape.shape_type == 13:   # Picture
-
-#                 area = shape.width * shape.height
-
-#                 pictures.append((area, shape))
-
-#         if not pictures:
-
-#             print("No pictures found.")
-
-#             return
-
-#         # Ignore the logo by choosing the largest picture
-
-#         pictures.sort(reverse=True)
-
-#         picture = pictures[0][1]
-
-#         blips = picture._element.findall(
-#             ".//{http://schemas.openxmlformats.org/drawingml/2006/main}blip"
-#         )
-
-#         if not blips:
-
-#             return
-
-#         r_embed_attr = (
-#             "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed"
-#         )
-
-#         rId = blips[0].get(r_embed_attr)
-
-#         if rId and rId in slide.part.rels:
-
-#             slide.part.rels[rId].target_part._blob = image_bytes
-
-#             print("Image replaced.")
-
-#     except Exception as e:
-
-#         print(e)
-
-# @app.route("/generate-service-ppt/<int:id>")
-# def generate_service_ppt(id):
-#     """Generate a PPT for a single service using the Brand Strategy template (Slide 6)."""
-#     service = Service.query.get_or_404(id)
-
-#     content = None
-#     if service.detailed_content:
-#         try:
-#             content = json.loads(service.detailed_content)
-#         except:
-#             content = None
-
-#     service_name = service.name
-#     overview_text = content["overview"] if content and content.get("overview") else (service.short_description or "")
-#     services_text = "\n".join([f"- {f}" for f in content["key_features"]]) if content and content.get("key_features") else (service.short_description or "")
-#     why_text = "\n".join([f"- {r}" for r in content["why_choose_us"]]) if content and content.get("why_choose_us") else "- Professional team\n- Quality workmanship\n- Indian standards compliance\n- End-to-end project management"
-
-#     template_path = os.path.join("templates", "Brand Strategy.pptx")
-#     prs = Presentation(template_path)
-#     slide = prs.slides[5]  # Slide 6 = service template
-
-#     _replace_text_in_slide(slide, {
-#         "{{SERVICE_NAME}}": service_name,
-#         "{{SERVICE_OVERVIEW}}": overview_text,
-#         "{{THE_SERVICES}}": services_text,
-#         "{{WHY_CHOOSE_US}}": why_text,
-#     })
-
-#     #if service.image_url:
-#         #replace_slide_image(slide, service.image_url)
-
-#     # Clear manufacturing placeholders on slide 7 so they don't appear raw
-#     _replace_text_in_slide(prs.slides[6], {
-#         "{{MANUFACTURING_NAME}}": "",
-#         "{{MANUFACTURING_OVERVIEW}}": "",
-#     })
-
-#     safe_name = service.name.replace("/", "-").replace("\\", "-").replace(":", "-").strip()
-#     filename = f"{safe_name}_Service.pptx"
-#     output_path = os.path.join("static", "uploads", filename)
-#     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-#     prs.save(output_path)
-#     return send_file(output_path, as_attachment=True, download_name=filename)
-
-
-# @app.route("/generate-manufacturing-ppt/<int:id>")
-# def generate_manufacturing_ppt(id):
-#     """Generate a PPT for a single manufacturing product using the Brand Strategy template (Slide 7)."""
-#     import requests as req_lib
-
-#     product = ManufacturingProduct.query.get_or_404(id)
-
-#     content = None
-#     if product.detailed_content:
-#         try:
-#             content = json.loads(product.detailed_content)
-#         except:
-#             content = None
-
-#     mfg_name = product.name
-#     overview_text = content["overview"] if content and content.get("overview") else (product.short_description or "")
-
-#     template_path = os.path.join("templates", "Brand Strategy.pptx")
-#     prs = Presentation(template_path)
-#     slide = prs.slides[6]  # Slide 7 = manufacturing template
-
-#     _replace_text_in_slide(slide, {
-#         "{{MANUFACTURING_NAME}}": mfg_name,
-#         "{{MANUFACTURING_OVERVIEW}}": overview_text,
-#     })
-
-#     #if product.image_url:
-#     #    _replace_slide_image(slide, product.image_url, target_index=1)
-
-#     # Clear service placeholders on slide 6
-#     _replace_text_in_slide(prs.slides[5], {
-#         "{{SERVICE_NAME}}": "",
-#         "{{SERVICE_OVERVIEW}}": "",
-#         "{{THE_SERVICES}}": "",
-#         "{{WHY_CHOOSE_US}}": "",
-#     })
-
-#     safe_name = product.name.replace("/", "-").replace("\\", "-").replace(":", "-").strip()
-#     filename = f"{safe_name}_Manufacturing.pptx"
-#     output_path = os.path.join("static", "uploads", filename)
-#     os.makedirs(os.path.dirname(output_path), exist_ok=True)
-#     prs.save(output_path)
-#     return send_file(output_path, as_attachment=True, download_name=filename)
-
-# @app.route("/generate-custom-ppt", methods=["POST"])
-# def generate_custom_ppt():
-
-#     import aspose.slides as slides
-
-#     service_ids = request.form.getlist("service_ids")
-
-#     product_ids = request.form.getlist("product_ids")
-
-#     if not service_ids and not product_ids:
-
-#         return redirect(
-#             request.referrer or "/build-ppt"
-#         )
-
-#     template_path = os.path.join(
-#         "templates",
-#         "Brand Strategy.pptx"
-#     )
-
-#     pres = slides.Presentation(template_path)
-
-#     SERVICE_TEMPLATE = 5
-#     MANUFACTURING_TEMPLATE = 6
-
-#     insert_position = 7
-
-#     for sid in service_ids:
-
-#         service = Service.query.get(int(sid))
-
-#         if not service:
-
-#             continue
-
-#         content = None
-
-#         if service.detailed_content:
-
-#             try:
-
-#                 content = json.loads(
-#                     service.detailed_content
-#                 )
-
-#             except:
-
-#                 content = None
-
-#         new_slide = pres.slides.insert_clone(
-#             insert_position,
-#             pres.slides[SERVICE_TEMPLATE]
-#         )
-
-#         insert_position += 1
-
-#         overview = (
-#             content["overview"]
-
-#             if content and content.get("overview")
-
-#             else service.short_description or ""
-#         )
-
-#         services = (
-#             "\n".join(
-#                 [
-#                     f"• {x}"
-
-#                     for x in content["key_features"]
-#                 ]
-#             )
-
-#             if content and content.get("key_features")
-
-#             else ""
-#         )
-
-#         why = (
-#             "\n".join(
-#                 [
-#                     f"✓ {x}"
-
-#                     for x in content["why_choose_us"]
-#                 ]
-#             )
-
-#             if content and content.get("why_choose_us")
-
-#             else ""
-#         )
-
-#         replacements = {
-
-#             "{{SERVICE_NAME}}":
-#             shorten_title(service.name),
-
-#             "{{SERVICE_OVERVIEW}}":
-#             overview,
-
-#             "{{THE_SERVICES}}":
-#             services,
-
-#             "{{WHY_CHOOSE_US}}":
-#             why,
-
-#         }
-
-#         for shape in new_slide.shapes:
-
-#             if hasattr(shape, "text_frame"):
-
-#                 if shape.text_frame:
-
-#                     text = shape.text_frame.text
-
-#                     for old, new in replacements.items():
-
-#                         text = text.replace(
-#                             old,
-#                             new
-#                         )
-
-#                     shape.text_frame.text = text
-
-#     for pid in product_ids:
-
-#         product = ManufacturingProduct.query.get(
-#             int(pid)
-#         )
-
-#         if not product:
-
-#             continue
-
-#         content = None
-
-#         if product.detailed_content:
-
-#             try:
-
-#                 content = json.loads(
-#                     product.detailed_content
-#                 )
-
-#             except:
-
-#                 content = None
-
-#         new_slide = pres.slides.insert_clone(
-#             insert_position,
-#             pres.slides[MANUFACTURING_TEMPLATE]
-#         )
-
-#         insert_position += 1
-
-#         overview = (
-#             content["overview"]
-
-#             if content and content.get("overview")
-
-#             else product.short_description or ""
-#         )
-
-#         replacements = {
-
-#             "{{MANUFACTURING_NAME}}":
-#             shorten_title(product.name),
-
-#             "{{MANUFACTURING_OVERVIEW}}":
-#             overview,
-
-#         }
-
-#         for shape in new_slide.shapes:
-
-#             if hasattr(shape, "text_frame"):
-
-#                 if shape.text_frame:
-
-#                     text = shape.text_frame.text
-
-#                     for old, new in replacements.items():
-
-#                         text = text.replace(
-#                             old,
-#                             new
-#                         )
-
-#                     shape.text_frame.text = text
-
-#     pres.slides.remove_at(
-#         MANUFACTURING_TEMPLATE
-#     )
-
-#     pres.slides.remove_at(
-#         SERVICE_TEMPLATE
-#     )
-
-#     filename = (
-#         "Trident_Custom_Selection.pptx"
-#     )
-
-#     output_path = os.path.join(
-
-#         "static",
-
-#         "uploads",
-
-#         filename
-
-#     )
-
-#     pres.save(
-
-#         output_path,
-
-#         slides.export.SaveFormat.PPTX
-
-#     )
-
-#     return send_file(
-
-#         output_path,
-
-#         as_attachment=True,
-
-#         download_name=filename
-
-#     )
-# @app.route("/build-ppt")
-# def build_ppt_picker():
-
-#     all_services = Service.query.all()
-
-#     all_products = ManufacturingProduct.query.all()
-
-#     return render_template(
-#         "build_ppt.html",
-#         services=all_services,
-#         products=all_products
-#     )
-# @app.route("/test-ppt")
-# def test_ppt():
-
-#     template_path = os.path.join(
-#         "templates",
-#         "Brand Strategy.pptx"
-#     )
-
-#     prs = Presentation(template_path)
-
-#     output_path = os.path.join(
-#         "static",
-#         "uploads",
-#         "test_output.pptx"
-#     )
-
-#     prs.save(output_path)
-
-#     return send_file(
-#         output_path,
-#         as_attachment=True
-#     )
 
 if __name__ == "__main__":
     with app.app_context():

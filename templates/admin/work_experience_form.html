@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIDENT — {{ 'Edit' if work else 'Add' }} Work Experience</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:Inter,sans-serif;background:#f5f5f5;}
+</style>
+</head>
+<body>
+{% include 'navbar.html' %}
+
+<main class="max-w-2xl mx-auto px-8 py-8">
+
+    <div class="mb-8">
+        <a href="/admin/work-experience" class="text-sm text-gray-400 hover:text-gray-600">← Back to work experience</a>
+        <h1 class="text-4xl font-bold mt-2">{{ 'Edit' if work else 'Add' }} Work Experience</h1>
+    </div>
+
+    <form method="POST" class="bg-white rounded-xl border p-6 space-y-8">
+
+        <!-- BASIC DETAILS -->
+        <div class="space-y-5">
+            <h2 class="font-semibold text-gray-700">Project Details</h2>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Project Name</label>
+                <input type="text" name="project_name"
+                    value="{{ work.project_name if work else '' }}"
+                    class="border p-3 rounded w-full" />
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Work Value (Crore)</label>
+                    <input type="number" step="0.01" name="work_value_crore" required
+                        value="{{ work.work_value_crore if work else '' }}"
+                        class="border p-3 rounded w-full" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Completion Date</label>
+                    <input type="date" name="completion_date" required
+                        value="{{ work.completion_date.isoformat() if work and work.completion_date else '' }}"
+                        class="border p-3 rounded w-full" />
+                </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Work Type</label>
+                    <input type="text" name="work_type"
+                        value="{{ work.work_type if work else '' }}"
+                        class="border p-3 rounded w-full" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Voltage Class (kV)</label>
+                    <input type="number" step="0.01" name="voltage_class_kv"
+                        value="{{ work.voltage_class_kv if work and work.voltage_class_kv is not none else '' }}"
+                        class="border p-3 rounded w-full" />
+                </div>
+            </div>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Equipment Combo</label>
+                <input type="text" name="equipment_combo"
+                    value="{{ work.equipment_combo if work else '' }}"
+                    placeholder="e.g. HT/LT Transformer & Switchgear"
+                    class="border p-3 rounded w-full" />
+                <p class="text-xs text-gray-400 mt-1">Describe the equipment/scope — matched against each tender's allowed work-type categories.</p>
+            </div>
+
+            <label class="flex items-center gap-2 text-sm text-gray-700">
+                <input type="checkbox" name="is_substantially_completed"
+                    {% if work and work.is_substantially_completed %}checked{% endif %} />
+                Substantially completed
+            </label>
+        </div>
+
+        <hr>
+
+        <!-- CERTIFICATE / ISSUER DETAILS -->
+        <div class="space-y-5">
+            <h2 class="font-semibold text-gray-700">Certificate Issuer Details</h2>
+
+            <div>
+                <label class="block text-sm font-medium text-gray-700 mb-1">Certificate Issuer Type</label>
+                <select name="certificate_issuer_type" class="border p-3 rounded w-full">
+                    {% set current = work.certificate_issuer_type if work else '' %}
+                    {% for opt, label in [
+                        ("government", "Government / PSU"),
+                        ("private_limited_company", "Private Limited Company"),
+                        ("public_listed_company", "Public Listed Company"),
+                        ("private_individual", "Private Individual (not accepted)"),
+                        ("other", "Other")
+                    ] %}
+                    <option value="{{ opt }}" {% if current == opt %}selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+                <p class="text-xs text-gray-400 mt-1">
+                    Certificates from private individuals are never accepted. Public Listed company
+                    certificates need the extra details below to qualify.
+                </p>
+            </div>
+
+            <div class="grid grid-cols-2 gap-4">
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Issuer Avg. Turnover, last 3 FY (Crore)</label>
+                    <input type="number" step="0.01" name="issuer_avg_turnover_3yr_crore"
+                        value="{{ work.issuer_avg_turnover_3yr_crore if work and work.issuer_avg_turnover_3yr_crore is not none else '' }}"
+                        class="border p-3 rounded w-full" />
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Issuer Incorporation Date</label>
+                    <input type="date" name="issuer_incorporation_date"
+                        value="{{ work.issuer_incorporation_date.isoformat() if work and work.issuer_incorporation_date else '' }}"
+                        class="border p-3 rounded w-full" />
+                </div>
+            </div>
+
+            <div class="flex gap-6">
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" name="issuer_listed_nse"
+                        {% if work and work.issuer_listed_nse %}checked{% endif %} />
+                    Listed on NSE
+                </label>
+                <label class="flex items-center gap-2 text-sm text-gray-700">
+                    <input type="checkbox" name="issuer_listed_bse"
+                        {% if work and work.issuer_listed_bse %}checked{% endif %} />
+                    Listed on BSE
+                </label>
+            </div>
+
+            <div>
+                <p class="text-sm font-medium text-gray-700 mb-2">Supporting documents on file</p>
+                <div class="grid grid-cols-2 gap-2">
+                    {% for field, label in [
+                        ("has_work_order_copy", "Work order copy"),
+                        ("has_boq", "Bill of quantities"),
+                        ("has_ca_certified_payment_details", "CA-certified payment details"),
+                        ("has_tds_certificates", "TDS certificates"),
+                        ("has_final_bill_copy", "Final bill copy")
+                    ] %}
+                    <label class="flex items-center gap-2 text-sm text-gray-700">
+                        <input type="checkbox" name="{{ field }}"
+                            {% if work and work[field] %}checked{% endif %} />
+                        {{ label }}
+                    </label>
+                    {% endfor %}
+                </div>
+                <p class="text-xs text-gray-400 mt-2">
+                    Only required when the issuer is a Public Listed Company.
+                </p>
+            </div>
+        </div>
+
+        <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded font-semibold">
+            {{ 'Save Changes' if work else 'Add Work Experience' }}
+        </button>
+
+    </form>
+
+</main>
+</body>
+</html>

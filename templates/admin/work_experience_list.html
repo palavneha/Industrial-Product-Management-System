@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIDENT — Work Experience</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:Inter,sans-serif;background:#f5f5f5;}
+</style>
+</head>
+<body>
+{% include 'navbar.html' %}
+
+<main class="max-w-6xl mx-auto px-8 py-8">
+
+    <div class="mb-8">
+        <a href="/admin" class="text-sm text-gray-400 hover:text-gray-600">← Back to admin dashboard</a>
+        <div class="flex items-center justify-between mt-2">
+            <div>
+                <h1 class="text-4xl font-bold">Work Experience</h1>
+                <p class="text-gray-500 mt-2">Past projects used to match similar-work eligibility criteria.</p>
+            </div>
+            <a href="/admin/work-experience/add" class="bg-blue-600 text-white px-5 py-3 rounded font-semibold">
+                + Add Work
+            </a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-lg p-3 mb-6">
+          {{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <div class="bg-white rounded-xl border overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500">
+                <tr>
+                    <th class="text-left py-3 px-4">Project</th>
+                    <th class="text-left py-3 px-4">Equipment / Work Type</th>
+                    <th class="text-left py-3 px-4">Value (Cr)</th>
+                    <th class="text-left py-3 px-4">Completed</th>
+                    <th class="text-left py-3 px-4">Status</th>
+                    <th class="text-right py-3 px-4">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for w in works %}
+                <tr class="border-t">
+                    <td class="py-3 px-4 font-medium">{{ w.project_name or '-' }}</td>
+                    <td class="py-3 px-4 text-gray-600">{{ w.equipment_combo or '-' }}</td>
+                    <td class="py-3 px-4">{{ w.work_value_crore }}</td>
+                    <td class="py-3 px-4">{{ w.completion_date.strftime("%b %Y") if w.completion_date else '-' }}</td>
+                    <td class="py-3 px-4">
+                        {% if w.is_substantially_completed %}
+                        <span class="bg-green-100 text-green-700 px-3 py-1 rounded-full text-xs font-semibold">Completed</span>
+                        {% else %}
+                        <span class="bg-gray-100 text-gray-600 px-3 py-1 rounded-full text-xs font-semibold">In progress</span>
+                        {% endif %}
+                    </td>
+                    <td class="py-3 px-4 text-right">
+                        <a href="/admin/work-experience/{{ w.id }}/edit" class="text-blue-600 hover:underline mr-4">Edit</a>
+                        <form action="/admin/work-experience/{{ w.id }}/delete" method="POST" class="inline"
+                              onsubmit="return confirm('Delete this work experience record?');">
+                            <button type="submit" class="text-red-600 hover:underline">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="6" class="py-8 px-4 text-center text-gray-400">No work experience added yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</main>
+</body>
+</html>

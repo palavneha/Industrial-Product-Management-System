@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIDENT — Company Profile</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:Inter,sans-serif;background:#f5f5f5;}
+</style>
+</head>
+<body>
+{% include 'navbar.html' %}
+
+<main class="max-w-3xl mx-auto px-8 py-8">
+
+    <div class="mb-8">
+        <a href="/admin" class="text-sm text-gray-400 hover:text-gray-600">← Back to admin dashboard</a>
+        <h1 class="text-4xl font-bold mt-2">Company Profile</h1>
+        <p class="text-gray-500 mt-2">Core entity details used across eligibility and compliance checks.</p>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-lg p-3 mb-6">
+          {{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    <form method="POST" class="bg-white rounded-xl border p-6 space-y-5">
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Entity Type</label>
+            <select name="entity_type" class="border p-3 rounded w-full">
+                {% set current = profile.entity_type if profile else '' %}
+                {% for opt in ["Proprietary", "Company", "Partnership", "JV", "Society", "Trust", "HUF", "LLP"] %}
+                <option value="{{ opt }}" {% if current == opt %}selected{% endif %}>{{ opt }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Electrical Contractor License</label>
+            <input type="text" name="electrical_contractor_license"
+                value="{{ profile.electrical_contractor_license if profile else '' }}"
+                class="border p-3 rounded w-full" />
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Contractor Class</label>
+            <input type="text" name="contractor_class"
+                value="{{ profile.contractor_class if profile else '' }}"
+                placeholder="e.g. Class A"
+                class="border p-3 rounded w-full" />
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">Established Year</label>
+            <input type="number" name="established_year" min="1900" max="2100"
+                value="{{ profile.established_year if profile else '' }}"
+                class="border p-3 rounded w-full" />
+        </div>
+
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-1">PAN Number</label>
+            <input type="text" name="pan_number"
+                value="{{ profile.pan_number if profile else '' }}"
+                class="border p-3 rounded w-full" />
+        </div>
+
+        <button type="submit" class="bg-blue-600 text-white px-6 py-3 rounded font-semibold">
+            Save Profile
+        </button>
+
+    </form>
+
+</main>
+</body>
+</html>

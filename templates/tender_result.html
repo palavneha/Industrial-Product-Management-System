@@ -62,348 +62,191 @@ Tender Analysis
 
 
 <!-- DASHBOARD -->
-
 <div class="bg-white rounded-xl border overflow-hidden mb-6">
+  <div class="p-6 border-b">
+    <h2 class="text-xl font-bold">Tender Dashboard</h2>
+  </div>
 
-<div class="p-6 border-b">
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-6 p-6">
+    <div>
+      <p class="text-gray-500 text-sm">Advertised Value</p>
+      <p class="font-semibold">₹{{ result.dashboard.advertised_value }}</p>
+    </div>
 
-<h2 class="text-xl font-bold">
+    <div>
+      <p class="text-gray-500 text-sm">Earnest Money</p>
+      <p class="font-semibold">₹{{ result.dashboard.earnest_money }}</p>
+    </div>
 
-Tender Dashboard
-
-</h2>
-
+    <div>
+      <p class="text-gray-500 text-sm">Completion Period</p>
+      <p class="font-semibold">{{ result.dashboard.completion_period }}</p>
+    </div>
+  </div>
 </div>
 
-
-<div class="grid grid-cols-2 md:grid-cols-4 gap-6 p-6">
-
-
-<div>
-
-<p class="text-gray-500 text-sm">
-
-Advertised Value
-
-</p>
-
-<p class="font-semibold">
-
-₹{{ result.dashboard.advertised_value }}
-
-</p>
-
-</div>
-
-
-<div>
-
-<p class="text-gray-500 text-sm">
-
-Earnest Money
-
-</p>
-
-<p class="font-semibold">
-
-₹{{ result.dashboard.earnest_money }}
-
-</p>
-
-</div>
-
-
-<div>
-
-<p class="text-gray-500 text-sm">
-
-Completion Period
-
-</p>
-
-<p class="font-semibold">
-
-{{ result.dashboard.completion_period }}
-
-</p>
-
-</div>
-
-
-
-
-</div>
+<!-- ELIGIBILITY CONDITIONS (Financial + Technical, combined) -->
 <div class="bg-white rounded-xl border overflow-hidden mb-6">
+  <div class="p-6 border-b">
+    <h2 class="text-xl font-bold">Eligibility Conditions</h2>
+  </div>
 
-<div class="p-6 border-b">
+  <!-- Financial Criteria -->
+  <div class="p-6 border-b">
+    <h3 class="font-semibold text-gray-700 mb-4">Financial Criteria</h3>
 
-<h2 class="text-xl font-bold">
+    {% for item in result.eligibility %}
+    <div class="flex justify-between items-center {% if not loop.last %}mb-4{% endif %}">
+      <div>
+        <p class="font-semibold">{{ item.name }}</p>
+      </div>
 
-Eligibility Conditions
+      <div>
+        <p class="text-sm text-gray-500">Required Turnover</p>
+        <p class="font-semibold">{{ item.required }}</p>
+      </div>
 
-</h2>
+      <div>
+        <p class="text-sm text-gray-500">Company Turnover</p>
+        <p class="font-semibold">{{ item.actual }}</p>
+      </div>
 
-</div>
+      <div>
+        {% if item.eligible %}
+        <span class="bg-green-100 text-green-700 px-4 py-2 rounded-full font-semibold">✓ Eligible</span>
+        {% else %}
+        <span class="bg-red-100 text-red-700 px-4 py-2 rounded-full font-semibold">✗ Not Eligible</span>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
 
+  <!-- Technical Criteria -->
+  <div class="p-6">
+    <h3 class="font-semibold text-gray-700 mb-4">Technical Criteria</h3>
 
-{% for item in result.eligibility %}
+    <div class="mb-4">
+      <p class="text-sm text-gray-600">
+        Experience Requirement: last
+        <b>{{ result.technical_eligibility.lookback_period_years }} years</b>
+        required.
+      </p>
+    </div>
 
-<div class="flex justify-between items-center p-6 border-b">
+    {% if result.technical_eligibility.eligible %}
+      <div class="flex items-start gap-4 bg-green-50 border border-green-200 rounded-xl p-5">
+        <span class="text-3xl">✓</span>
+        <div class="flex-1">
+          <h2 class="text-xl font-bold text-green-800 mb-1">Eligible</h2>
+          <p class="text-green-900">
+            Your company qualifies under the Similar Work Experience criterion —
+            {{ result.technical_eligibility.actual }}, meeting the requirement of
+            {{ result.technical_eligibility.required }}.
+          </p>
 
-
-<div>
-
-<p class="font-semibold">
-
-{{ item.name }}
-
-</p>
-
-</div>
-
-
-<div>
-
-<p class="text-sm text-gray-500">
-
-Required Turnover
-
-</p>
-
-<p class="font-semibold">
-
-{{ item.required }}
-</p>
-
-</div>
-
-
-<div>
-
-<p class="text-sm text-gray-500">
-
-Company Turnover
-
-</p>
-
-<p class="font-semibold">
-
-{{ item.actual }}
-</p>
-
-</div>
-
-
-<div>
-
-{% if item.eligible %}
-
-<span
-
-class="bg-green-100
-
-text-green-700
-
-px-4 py-2
-
-rounded-full
-
-font-semibold"
-
->
-
-✓ Eligible
-
-</span>
-
-{% else %}
-
-<span
-
-class="bg-red-100
-
-text-red-700
-
-px-4 py-2
-
-rounded-full
-
-font-semibold"
-
->
-
-✗ Not Eligible
-
-</span>
-
-{% endif %}
-
-</div>
-
-
-</div>
-
+          <div class="mt-4 space-y-2">
+            {% for w in result.technical_eligibility.matched_works %}
+            <div class="bg-white border border-green-200 rounded-lg px-4 py-2 flex justify-between items-center text-sm">
+              <span class="font-medium text-gray-800">{{ w.project_name }}</span>
+              <span class="text-gray-600">
+                {{ "%.0f"|format(w.percent) }}% of tender value
+                &middot;
+                {{ w.completion_date.strftime("%b %Y") }}
+              </span>
+            </div>
 {% endfor %}
+          </div>
+        </div>
+      </div>
+    {% else %}
+      <div class="flex items-start gap-4 bg-red-50 border border-red-200 rounded-xl p-5">
+        <span class="text-3xl">✗</span>
+        <div class="flex-1">
+          <h2 class="text-xl font-bold text-red-800 mb-1">Not Eligible</h2>
+          <p class="text-red-900">
+            Your company does not currently meet the Similar Work Experience criterion.
+            Required: {{ result.technical_eligibility.required }}.
+            Your company: {{ result.technical_eligibility.actual }}.
+          </p>
 
+          {% if result.technical_eligibility.near_miss_works %}
+          <details class="mt-4 group">
+            <summary class="cursor-pointer list-none flex items-center gap-2 text-sm font-medium text-red-800">
+              <span class="transition-transform group-open:rotate-90">▶</span>
+              View closest matching works ({{ result.technical_eligibility.near_miss_works|length }})
+            </summary>
+            <div class="mt-3 space-y-2">
+              {% for w in result.technical_eligibility.near_miss_works %}
+              <div class="bg-white border border-red-200 rounded-lg px-4 py-2 flex justify-between items-center text-sm">
+                <span class="font-medium text-gray-800">{{ w.project_name }}</span>
+                <span class="text-gray-600">
+                  {{ "%.0f"|format(w.percent) }}% of tender value
+                  &middot;
+                  {{ w.completion_date.strftime("%b %Y") }}
+                </span>
+              </div>
+              {% endfor %}
+            </div>
+          </details>
+          {% endif %}
+        </div>
+      </div>
+    {% endif %}
+
+    <div class="mt-4">
+      <details class="group">
+        <summary class="font-semibold cursor-pointer list-none flex items-center gap-2 text-gray-700">
+          <span class="transition-transform group-open:rotate-90">▶</span>
+          View eligibility criteria, definitions &amp; conditions
+        </summary>
+
+        <div class="mt-4 space-y-6">
+          <div>
+            <h4 class="font-semibold mb-2 text-sm text-gray-600">Similar Work Conditions</h4>
+            <table class="w-full text-sm">
+              <thead>
+                <tr>
+                  <th class="text-left py-2 text-gray-500">Projects</th>
+                  <th class="text-left py-2 text-gray-500">Tender Value %</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for item in result.technical_eligibility.similar_work_options %}
+                <tr>
+                  <td class="py-2">{{ item.min_count }}</td>
+                  <td class="py-2">{{ item.min_percent_of_tender_value }}%</td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+
+          <div>
+            <h4 class="font-semibold mb-2 text-sm text-gray-600">Definition of Similar Work</h4>
+            <p class="text-sm text-gray-700">{{ result.technical_eligibility.similar_work_definition }}</p>
+          </div>
+
+          {% if result.technical_eligibility.certificate_conditions_checked %}
+          <div class="flex items-center gap-2 text-sm text-green-700">
+            <span>✓</span>
+            <span>Certificate eligibility conditions checked against all submitted work records</span>
+          </div>
+          {% endif %}
+
+          <div>
+            <h4 class="font-semibold mb-2 text-sm text-gray-600">Additional Conditions</h4>
+            <ul class="list-disc ml-6 text-sm text-gray-700">
+              {% for item in result.technical_eligibility.mandatory_conditions %}
+              <li>{{ item }}</li>
+              {% endfor %}
+            </ul>
+          </div>
+        </div>
+      </details>
+    </div>
+  </div>
 </div>
-</div>
-
-
-
-
-
-</div>
-<div class="bg-white rounded-xl border overflow-hidden mb-6">
-
-<div class="p-6 border-b">
-
-<h2 class="text-xl font-bold">
-
-Technical Eligibility
-
-</h2>
-
-</div>
-
-
-<div class="p-6">
-
-<h3 class="font-semibold mb-3">
-
-Experience Requirement
-
-</h3>
-
-<p>
-
-Last
-
-<b>
-
-{{ result.technical_eligibility.lookback_period_years }}
-
-years
-
-</b>
-
-experience required.
-
-</p>
-
-</div>
-<div class="p-6 border-t">
-  <h3 class="font-semibold mb-3">Eligibility Result</h3>
-  <p class="text-sm text-gray-500 mb-1">Required: {{ result.technical_eligibility.required }}</p>
-  <p class="text-sm text-gray-500 mb-3">Your Company: {{ result.technical_eligibility.actual }}</p>
-  {% if result.technical_eligibility.eligible %}
-    <span class="bg-green-100 text-green-700 px-4 py-2 rounded-full font-semibold">✓ Eligible</span>
-  {% else %}
-    <span class="bg-red-100 text-red-700 px-4 py-2 rounded-full font-semibold">✗ Not Eligible</span>
-  {% endif %}
-</div>
-
-<div class="p-6 border-t">
-
-<h3 class="font-semibold mb-3">
-
-Similar Work Conditions
-
-</h3>
-
-<table class="w-full">
-
-<thead>
-
-<tr>
-
-<th class="text-left py-2">
-
-Projects
-
-</th>
-
-<th class="text-left py-2">
-
-Tender Value %
-
-</th>
-
-</tr>
-
-</thead>
-
-<tbody>
-
-{% for item in result.technical_eligibility.similar_work_options %}
-
-<tr>
-
-<td class="py-2">
-
-{{ item.min_count }}
-
-</td>
-
-<td class="py-2">
-
-{{ item.min_percent_of_tender_value }}%
-
-</td>
-
-</tr>
-
-{% endfor %}
-
-</tbody>
-
-</table>
-
-</div>
-
-
-<div class="p-6 border-t">
-
-<h3 class="font-semibold mb-3">
-
-Definition of Similar Work
-
-</h3>
-
-<p>
-
-{{ result.technical_eligibility.similar_work_definition }}
-
-</p>
-
-</div>
-
-
-<div class="p-6 border-t">
-
-<h3 class="font-semibold mb-3">
-
-Additional Conditions
-
-</h3>
-
-<ul class="list-disc ml-6">
-
-{% for item in result.technical_eligibility.mandatory_conditions %}
-
-<li>
-
-{{ item }}
-
-</li>
-
-{% endfor %}
-
-</ul>
-
-</div>
-
-</div>
-
 
 
 <!-- FLOATING BUTTON -->

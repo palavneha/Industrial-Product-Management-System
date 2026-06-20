@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIDENT — Financial Years</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:Inter,sans-serif;background:#f5f5f5;}
+</style>
+</head>
+<body>
+{% include 'navbar.html' %}
+
+<main class="max-w-5xl mx-auto px-8 py-8">
+
+    <div class="mb-8">
+        <a href="/admin" class="text-sm text-gray-400 hover:text-gray-600">← Back to admin dashboard</a>
+        <div class="flex items-center justify-between mt-2">
+            <div>
+                <h1 class="text-4xl font-bold">Financial Years</h1>
+                <p class="text-gray-500 mt-2">Turnover figures used for financial eligibility checks.</p>
+            </div>
+            <a href="/admin/financial-years/add" class="bg-blue-600 text-white px-5 py-3 rounded font-semibold">
+                + Add Financial Year
+            </a>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages() %}
+      {% if messages %}
+        <div class="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-lg p-3 mb-6">
+          {{ messages[0] }}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% if not profile %}
+    <div class="bg-yellow-50 border border-yellow-200 text-yellow-800 text-sm rounded-lg p-4 mb-6">
+        Create a <a href="/admin/company-profile" class="underline">company profile</a> first.
+    </div>
+    {% endif %}
+
+    <div class="bg-white rounded-xl border overflow-hidden">
+        <table class="w-full text-sm">
+            <thead class="bg-gray-50 text-gray-500">
+                <tr>
+                    <th class="text-left py-3 px-4">Financial Year End</th>
+                    <th class="text-left py-3 px-4">Annual Turnover (Cr)</th>
+                    <th class="text-left py-3 px-4">Net Worth (Cr)</th>
+                    <th class="text-left py-3 px-4">Working Capital (Cr)</th>
+                    <th class="text-right py-3 px-4">Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for y in years %}
+                <tr class="border-t">
+                    <td class="py-3 px-4 font-medium">FY {{ y.financial_year_end }}</td>
+                    <td class="py-3 px-4">{{ y.annual_turnover_crore }}</td>
+                    <td class="py-3 px-4">{{ y.net_worth_crore if y.net_worth_crore is not none else '-' }}</td>
+                    <td class="py-3 px-4">{{ y.working_capital_crore if y.working_capital_crore is not none else '-' }}</td>
+                    <td class="py-3 px-4 text-right">
+                        <a href="/admin/financial-years/{{ y.id }}/edit" class="text-blue-600 hover:underline mr-4">Edit</a>
+                        <form action="/admin/financial-years/{{ y.id }}/delete" method="POST" class="inline"
+                              onsubmit="return confirm('Delete this financial year record?');">
+                            <button type="submit" class="text-red-600 hover:underline">Delete</button>
+                        </form>
+                    </td>
+                </tr>
+                {% else %}
+                <tr>
+                    <td colspan="5" class="py-8 px-4 text-center text-gray-400">No financial years added yet.</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+
+</main>
+</body>
+</html>

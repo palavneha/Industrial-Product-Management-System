@@ -12,23 +12,18 @@
 
                 <a href="/">Dashboard</a>
 
-                <a href="/products">
-                    Catalog
-                </a>
-
-                <a href="/services">
-                    Services
-                </a>
-
-                <a href="/manufacturing">
-                    Manufacturing
-                </a>
 
                 <a href="/tender">
                     Tender
                 </a>
 
                 <a href="/build-ppt" style="text-decoration: none;">Build Custom Selection</a>
+
+                {% if session.get('is_admin') %}
+                <a href="/admin">Admin</a>
+                {% else %}
+                <a href="/admin/login">Admin</a>
+                {% endif %}
 
             </div>
 
@@ -45,6 +40,12 @@
                 </button>
 
             </form>
+
+            {% if session.get('is_admin') %}
+            <a href="/admin/logout" class="text-sm text-gray-500 hover:text-gray-800">Admin logout</a>
+            {% endif %}
+
+            <a href="/logout" class="text-sm text-gray-500 hover:text-gray-800">Logout</a>
 
         </div>
 
