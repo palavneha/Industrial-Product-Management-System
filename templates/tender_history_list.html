@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>TRIDENT</title>
+<link rel="icon" type="image/png" href="/static/favicon.png">
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+body{font-family:Inter,sans-serif;background:#f5f5f5;}
+</style>
+</head>
+<body>
+{% include 'navbar.html' %}
+
+<main class="max-w-5xl mx-auto px-8 py-8">
+  <h1 class="text-3xl font-bold mb-6">Tender Analysis History</h1>
+  <div class="bg-white rounded-xl border divide-y">
+    {% for h in history %}
+    <a href="{{ url_for('tender_history_detail', id=h.id) }}" class="block p-4 hover:bg-gray-50 flex justify-between items-center">
+      <div>
+        <p class="font-semibold">{{ h.tender_name }}</p>
+        <p class="text-sm text-gray-500">{{ h.filename }} &middot; {{ h.created_at.strftime("%d %b %Y, %H:%M") }}</p>
+      </div>
+      <span class="px-3 py-1 rounded-full text-sm font-semibold {% if h.eligibility_verdict == 'ELIGIBLE' %}bg-green-100 text-green-700{% else %}bg-red-100 text-red-700{% endif %}">
+        {{ h.eligibility_verdict }}
+      </span>
+    </a>
+    {% else %}
+    <p class="p-4 text-gray-500">No tenders analyzed yet.</p>
+    {% endfor %}
+  </div>
+</main>
+
+</body>
+</html>

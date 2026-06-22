@@ -296,7 +296,7 @@ class TenderHistory(db.Model):
     )   # manually declared per bid, not derived from company data
 
     certificate_rules_json = db.Column(db.Text)  # per-tender extracted CERTIFICATE_RULES equivalent
-
+    full_result_json = db.Column(db.Text)
 
 class Service(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -432,6 +432,10 @@ def edit_product(id):
 
     return render_template("edit_product.html", product=product)
 
+def _json_default(obj):
+    if isinstance(obj, (date, datetime)):
+        return obj.isoformat()
+    raise TypeError(f"Not JSON serializable: {obj}")
 
 def extract_pdf_text(pdf):
     text = ""
@@ -1446,18 +1450,6 @@ def tender():
     failed = [r for r in determined if not r.eligible]
     reason = "; ".join(f"{r.name}: required {r.required}, actual {r.actual}" for r in failed) or "All criteria met"
 
-    history = TenderHistory(
-        filename=filename,
-        tender_name=nit_data.get("Name of Work", "-"),
-        tender_value_crore=tender_value_crore,
-        eligibility_verdict="ELIGIBLE" if overall_eligible else "NOT ELIGIBLE",
-        verdict_reason=reason,
-        certificate_rules_json=json.dumps(cert_rules) if cert_rules else None,
-        created_at=datetime.utcnow()
-    )
-    db.session.add(history)
-    db.session.commit()
-
     result = {
         "nit_header": nit_data,
         "dashboard": dashboard,
@@ -1465,8 +1457,44 @@ def tender():
         "technical_eligibility": technical_display,
     }
 
+    history = TenderHistory(
+        filename=filename,
+        tender_name=nit_data.get("Name of Work", "-"),
+        tender_value_crore=tender_value_crore,
+        eligibility_verdict="ELIGIBLE" if overall_eligible else "NOT ELIGIBLE",
+        verdict_reason=reason,
+        eligibility_criteria=json.dumps([asdict(r) for r in results]),
+        certificate_rules_json=json.dumps(cert_rules) if cert_rules else None,
+        full_result_json=json.dumps(result, default=_json_default),
+        created_at=datetime.utcnow()
+    )
+    db.session.add(history)
+    db.session.commit()
+
+    
+
     return render_template("tender_result.html", result=result, history=history, criteria=results)
 
+@app.route("/tender/history")
+def tender_history_list():
+    history = TenderHistory.query.order_by(TenderHistory.created_at.desc()).all()
+    return render_template("tender_history_list.html", history=history)
+
+@app.route("/tender/history/<int:id>")
+def tender_history_detail(id):
+    record = TenderHistory.query.get_or_404(id)
+    result = json.loads(record.full_result_json) if record.full_result_json else None
+    if result:
+        for w in result.get("technical_eligibility", {}).get("matched_works", []):
+            if w.get("completion_date"):
+                w["completion_date"] = datetime.fromisoformat(w["completion_date"]).date()
+        for w in result.get("technical_eligibility", {}).get("near_miss_works", []):
+            if w.get("completion_date"):
+                w["completion_date"] = datetime.fromisoformat(w["completion_date"]).date()
+        for w in result.get("technical_eligibility", {}).get("certificate_excluded_works", []):
+            if w.get("completion_date"):
+                w["completion_date"] = datetime.fromisoformat(w["completion_date"]).date()
+    return render_template("tender_result.html", result=result, history=record, criteria=None)
 
 # ---------- AUTH ----------
 
