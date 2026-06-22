@@ -839,7 +839,7 @@ def evaluate_technical_eligibility(sections, tender_value_crore, full_text=""):
             actual=parsed.get("not_found_reason") or "Could not determine — no work-type definition found",
             eligible=False, undetermined=True
         )
-        return result, definition_text, [], [], cert_rules, cert_excluded   # <-- must include cert_rules here too
+        return result, definition_text, [], [], cert_rules, []  # <-- must include cert_rules here too
 
     cutoff = date.today() - timedelta(days=365 * LOOKBACK_PERIOD_YEARS)
 
