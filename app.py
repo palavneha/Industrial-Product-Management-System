@@ -38,6 +38,7 @@ class CriterionResult:
     required: str
     actual: str
     eligible: bool
+    undetermined: bool = False  # True when criteria exist but couldn't be parsed
 
 SIMILAR_WORK_OPTIONS = [
     {"min_count": 3, "min_percent_of_tender_value": 30},
@@ -293,6 +294,8 @@ class TenderHistory(db.Model):
         db.Float
         
     )   # manually declared per bid, not derived from company data
+
+    certificate_rules_json = db.Column(db.Text)  # per-tender extracted CERTIFICATE_RULES equivalent
 
 
 class Service(db.Model):
@@ -753,7 +756,31 @@ nit_data
 
     return "Question unavailable."
 
-def evaluate_financial_eligibility(requirements, profile):
+def parse_completion_years(period_str):
+    """Parse a free-text completion period like '18 Months' or '24 months'
+    into a numeric number of years, for use in V/N turnover formulas."""
+    if not period_str or period_str == "-":
+        return None
+    match = re.search(r"(\d+)\s*(month|year)", period_str, re.IGNORECASE)
+    if not match:
+        return None
+    value, unit = match.groups()
+    value = float(value)
+    return value / 12 if unit.lower().startswith("month") else value
+
+def parse_completion_years(period_str):
+    """Parse a free-text completion period like '18 Months' into a numeric
+    number of years, for use in V/N turnover formulas."""
+    if not period_str or period_str == "-":
+        return None
+    match = re.search(r"(\d+)\s*(month|year)", period_str, re.IGNORECASE)
+    if not match:
+        return None
+    value, unit = match.groups()
+    value = float(value)
+    return value / 12 if unit.lower().startswith("month") else value
+
+def evaluate_financial_eligibility(requirements, profile, tender_value_crore=None, completion_period_years=None):
     results = []
     recent = (FinancialYear.query.filter_by(company_id=profile.id)
               .order_by(FinancialYear.financial_year_end.desc())
@@ -770,11 +797,32 @@ def evaluate_financial_eligibility(requirements, profile):
                 actual=f"Rs. {avg_turnover_rupees:,.0f}",
                 eligible=avg_turnover_rupees >= req["required"]
             ))
+        elif req["type"] == "turnover_formula":
+            if tender_value_crore and completion_period_years:
+                v_rupees = tender_value_crore * 1e7
+                n = completion_period_years
+                required_rupees = min(v_rupees / n, v_rupees)
+                results.append(CriterionResult(
+                    category="Financial", name="Average Annual Turnover (V/N formula)",
+                    required=f"Rs. {required_rupees:,.0f} (V/N or V, whichever is less; V=Rs.{v_rupees:,.0f}, N={n:.1f} yrs)",
+                    actual=f"Rs. {avg_turnover_rupees:,.0f}",
+                    eligible=avg_turnover_rupees >= required_rupees
+                ))
+            else:
+                results.append(CriterionResult(
+                    category="Financial", name="Average Annual Turnover",
+                    required=req["formula"],
+                    actual="Could not compute — missing tender value or completion period",
+                    eligible=False, undetermined=True
+                ))
     return results
 
-def evaluate_technical_eligibility(sections, tender_value_crore):
-    raw_chunk = extract_similar_work_raw_chunk(sections)
+def evaluate_technical_eligibility(sections, tender_value_crore, full_text=""):
+    raw_chunk = extract_similar_work_raw_chunk(sections, full_text)
     parsed = parse_similar_work_items(raw_chunk)
+    print("DEBUG parsed:", parsed)
+
+    cert_rules = extract_certificate_rules(raw_chunk)
 
     allowed_items = parsed.get("allowed_items", [])
     min_voltage_kv = parsed.get("min_voltage_kv") or 0
@@ -782,13 +830,12 @@ def evaluate_technical_eligibility(sections, tender_value_crore):
 
     if not allowed_items:
         result = CriterionResult(
-            category="Technical",
-            name="Similar Work Experience",
-            required="See SIMILAR_WORK_OPTIONS thresholds",
-            actual="Could not determine — work-type definition unavailable",
-            eligible=False
+            category="Technical", name="Similar Work Experience",
+            required="Definition not found in document",
+            actual=parsed.get("not_found_reason") or "Could not determine — no work-type definition found",
+            eligible=False, undetermined=True
         )
-        return result, definition_text, [], []
+        return result, definition_text, [], [], cert_rules   # <-- must include cert_rules here too
 
     cutoff = date.today() - timedelta(days=365 * LOOKBACK_PERIOD_YEARS)
 
@@ -796,30 +843,55 @@ def evaluate_technical_eligibility(sections, tender_value_crore):
         WorkExperience.completion_date >= cutoff,
         WorkExperience.is_substantially_completed == True
     ).all()
-
+    print("DEBUG works found:", [(w.id, w.project_name, w.equipment_combo, w.voltage_class_kv, w.completion_date, w.is_substantially_completed) for w in works])
+    print("DEBUG cert_rules:", cert_rules)
     match_results, match_ok = _equipment_combo_matches_batch(works, allowed_items)
-
+    print("DEBUG match_ok:", match_ok, "match_results:", match_results)
     if not match_ok:
         result = CriterionResult(
             category="Technical",
             name="Similar Work Experience",
             required="See SIMILAR_WORK_OPTIONS thresholds",
             actual="Could not determine — work-type matching service unavailable",
-            eligible=False
+            eligible=False,
+            undetermined=True
         )
-        return result, definition_text, [], []
+        return result, definition_text, [], [],cert_rules,[]   # <-- must include cert_rules here too
 
     qualifying = []
     near_misses = []
+    cert_excluded = []
+
     for w in works:
         if not match_results.get(w.id, False):
             continue
         if min_voltage_kv and (w.voltage_class_kv or 0) < min_voltage_kv:
             continue
-        cert_ok, cert_reason = _certificate_ok(w, CERTIFICATE_RULES)
-        if not cert_ok:
-            continue
+
+        cert_ok, cert_reason = _certificate_ok(w, cert_rules)
         percent = (w.work_value_crore / tender_value_crore) * 100 if tender_value_crore else 0
+
+        if cert_ok is None:
+            cert_excluded.append({
+                "project_name": w.project_name,
+                "percent": percent,
+                "completion_date": w.completion_date,
+                "work_value_crore": w.work_value_crore,
+                "status": "undetermined",
+                "reason": cert_reason,
+            })
+            continue
+        if not cert_ok:
+            cert_excluded.append({
+                "project_name": w.project_name,
+                "percent": percent,
+                "completion_date": w.completion_date,
+                "work_value_crore": w.work_value_crore,
+                "status": "rejected",
+                "reason": cert_reason,
+            })
+            continue
+
         entry = {
             "project_name": w.project_name,
             "percent": percent,
@@ -834,42 +906,81 @@ def evaluate_technical_eligibility(sections, tender_value_crore):
         if len(matches) >= opt["min_count"]:
             matched_entries = [m["entry"] for m in matches]
             result = CriterionResult(
-                category="Technical",
-                name="Similar Work Experience",
+                category="Technical", name="Similar Work Experience",
                 required=f"{opt['min_count']} work(s) >= {opt['min_percent_of_tender_value']}% of tender value",
                 actual=f"{len(matches)} qualifying work(s) found",
                 eligible=True
             )
-            return result, definition_text, matched_entries, []
+            return result, definition_text, matched_entries, [], cert_rules, cert_excluded
 
     near_misses.sort(key=lambda e: e["percent"], reverse=True)
 
+    # Would any cert_excluded work, if its certificate were resolved, have been enough on its own?
+    blocked_qualifiers = [
+        e for e in cert_excluded
+        if any(e["percent"] >= opt["min_percent_of_tender_value"] and opt["min_count"] == 1
+               for opt in SIMILAR_WORK_OPTIONS)
+    ]
+
+    required_desc = "; ".join(
+        f"{opt['min_count']} work(s) >= {opt['min_percent_of_tender_value']}% of tender value"
+        for opt in sorted(SIMILAR_WORK_OPTIONS, key=lambda o: o["min_count"])
+    )
+
+    if blocked_qualifiers:
+        actual_msg = (
+            f"{len(blocked_qualifiers)} work(s) meet the work-type and value threshold "
+            f"but are blocked by certificate/documentation issues — see below"
+        )
+        result = CriterionResult(
+            category="Technical", name="Similar Work Experience",
+            required=required_desc, actual=actual_msg,
+            eligible=False, undetermined=True   # <-- treated as "needs review," not a flat rejection
+        )
+        return result, definition_text, [], near_misses, cert_rules, cert_excluded
+
     best = max(qualifying, key=lambda q: q["percent"], default=None)
     result = CriterionResult(
-        category="Technical",
-        name="Similar Work Experience",
-        required="See SIMILAR_WORK_OPTIONS thresholds",
+        category="Technical", name="Similar Work Experience",
+        required=required_desc,
         actual=f"Best match {best['percent']:.0f}% of tender value" if best else "No qualifying work found",
         eligible=False
     )
-    return result, definition_text, [], near_misses
+    return result, definition_text, [], near_misses, cert_rules, cert_excluded
 
 def _certificate_ok(w, cert_rules):
-    if w.certificate_issuer_type == "private_individual" and not cert_rules["private_individual_allowed"]:
-        return False, "Certificate from private individual — not considered"
+    if cert_rules is None:
+        return None, "Could not determine this tender's certificate rules — verify manually"
+
+    if w.certificate_issuer_type == "private_individual":
+        if not cert_rules.get("private_individual_allowed", False):
+            return False, "Certificate from private individual — not considered"
+        return True, None
+
     if w.certificate_issuer_type == "public_listed_company":
-        req = cert_rules["public_listed_requirements"]
-        if (w.issuer_avg_turnover_3yr_crore or 0) < req["min_avg_turnover_last_3yr_crore"]:
-            return False, "Issuer turnover below Rs. 500 crore threshold"
-        if not ((w.issuer_listed_nse and "NSE" in req["must_be_listed_on"]) or
-                (w.issuer_listed_bse and "BSE" in req["must_be_listed_on"])):
-            return False, "Issuer not listed on NSE or BSE"
-        if not w.issuer_incorporation_date or \
-           (date.today() - w.issuer_incorporation_date).days / 365 < req["min_years_since_incorporation"]:
-            return False, "Issuer incorporated less than 5 years before tender closing"
-        for doc in req["required_supporting_docs"]:
+        req = cert_rules.get("public_listed_requirements")
+        if req is None:
+            return None, "Tender's certificate rules don't address public-listed-company issuers — verify manually whether this certificate is acceptable"
+
+        min_turnover = req.get("min_avg_turnover_last_3yr_crore")
+        if min_turnover is not None and (w.issuer_avg_turnover_3yr_crore or 0) < min_turnover:
+            return False, f"Issuer turnover below Rs. {min_turnover} crore threshold"
+
+        listed_on = req.get("must_be_listed_on") or []
+        if listed_on:
+            on_any = (w.issuer_listed_nse and "NSE" in listed_on) or (w.issuer_listed_bse and "BSE" in listed_on)
+            if not on_any:
+                return False, f"Issuer not listed on {' or '.join(listed_on)}"
+
+        min_years = req.get("min_years_since_incorporation")
+        if min_years is not None:
+            if not w.issuer_incorporation_date or (date.today() - w.issuer_incorporation_date).days / 365 < min_years:
+                return False, f"Issuer incorporated less than {min_years} years before tender closing"
+
+        for doc in req.get("required_supporting_docs", []):
             if not getattr(w, f"has_{doc}", False):
                 return False, f"Missing supporting document: {doc.replace('_', ' ')}"
+
     return True, None
 
 def evaluate_compliance_eligibility(requirements, profile):
@@ -895,41 +1006,120 @@ def evaluate_compliance_eligibility(requirements, profile):
         ))
     return results
 
-def extract_eligibility(sections):
+def _extract_eligibility_chunk(full_text):
     """
-    Extracts financial eligibility requirements from the
-    'Special Financial Criteria' section of the tender.
+    Locate the eligibility section using regex — handles varied heading styles
+    across different tender formats. Returns a bounded slice (max 3000 chars)
+    from the first eligibility heading to the first compliance/undertaking
+    boundary, so the LLM never sees the whole document.
     """
-    requirements = []
-    financial = sections.get("Special Financial Criteria", "")
+    # Cast a wide net for the start: handles "ELIGIBILITY CONDITIONS",
+    # "Eligibility Criteria", "Special Financial Criteria", etc.
+    start_match = re.search(
+        r"(?:eligibility\s+(?:conditions?|criteria)|special\s+financial\s+criteria)",
+        full_text, re.IGNORECASE
+    )
+    if not start_match:
+        return ""
 
-    # Convert newlines/tabs/multiple spaces into one space
-    financial = re.sub(r"\s+", " ", financial)
+    start = start_match.start()
 
-    # Find all turnover requirement mentions, capturing the unit too
-    turnover_matches = re.findall(
-        r"annual contractual turnover\s*=\s*Rs\.?\s*([\d,]+(?:\.\d+)?)\s*(crore|lakh)?",
-        financial,
+    # End boundary: first occurrence of COMPLIANCE, UNDERTAKING, or
+    # GENERAL INSTRUCTIONS after the start, or 3000 chars — whichever is sooner.
+    end_match = re.search(
+        r"(?:compliance|undertaking|general\s+instruction)",
+        full_text[start + 50:],   # +50 to skip a heading that itself has "compliance"
         re.IGNORECASE
     )
+    if end_match:
+        end = start + 50 + end_match.start()
+    else:
+        end = start + 3000
 
+    chunk = full_text[start:end]
+    return re.sub(r"\s+", " ", chunk).strip()
+
+
+def extract_eligibility(sections, full_text=""):
+    """
+    Extract financial turnover requirement.
+    Strategy:
+      1. Cheaply bound the eligibility section with regex (no LLM).
+      2. Send ONLY that slice (~3000 chars max) to the LLM to parse the
+         threshold — handles fixed amounts, V/N formulas, lakh/crore variants.
+      3. Fall back to legacy regex if the LLM call fails.
+    """
+    # Build the bounded chunk from the full text if available,
+    # otherwise fall back to the already-extracted section dict.
+    chunk = _extract_eligibility_chunk(full_text) if full_text else ""
+    if not chunk:
+        # Fall back to the pre-split section (works for standard-format tenders)
+        chunk = sections.get("Special Financial Criteria", "")
+        chunk = re.sub(r"\s+", " ", chunk).strip()
+
+    if not chunk:
+        return []
+
+    prompt = f"""You are extracting the minimum average annual contractual turnover requirement from a section of an Indian government tender document.
+
+The requirement may be expressed as:
+- A fixed rupee figure (e.g. "Rs. 50 crore", "Rs. 2,05,73,430")
+- A formula (e.g. "V/N or V whichever is less, where V = advertised value and N = completion period in years")
+
+Tender section text:
+\"\"\"{chunk}\"\"\"
+
+If the requirement is a fixed figure, return it as a number in RUPEES (not crore/lakh — convert to full rupees).
+If the requirement is a formula like V/N, return null for required_rupees and explain the formula in formula_text.
+If no financial turnover requirement is stated, return null for both.
+
+Return ONLY valid JSON, no markdown:
+{{"required_rupees": <number or null>, "formula_text": "<formula description or null>"}}"""
+
+    response_text = call_groq(prompt)
+    print("DEBUG extract_eligibility raw response:", response_text)
+    # --- LLM path ---
+    if response_text:
+        cleaned = response_text.replace("```json", "").replace("```", "").strip()
+        try:
+            parsed = json.loads(cleaned)
+            required = parsed.get("required_rupees")
+            formula = parsed.get("formula_text")
+
+            if required is not None:
+                return [{
+                    "type": "turnover",
+                    "name": "Average Annual Turnover",
+                    "required": float(required),
+                    "formula": None,
+                }]
+            elif formula:
+                print(f"Formula-based turnover requirement: {formula}")
+                return [{
+                    "type": "turnover_formula",
+                    "name": "Average Annual Turnover",
+                    "required": None,
+                    "formula": formula,
+                }]
+        except Exception as e:
+            print(f"extract_eligibility LLM parse failed: {e} — falling back to regex")
+
+    # --- Legacy regex fallback ---
+    turnover_matches = re.findall(
+        r"annual contractual turnover\s*=\s*Rs\.?\s*([\d,]+(?:\.\d+)?)\s*(crore|lakh)?",
+        chunk, re.IGNORECASE
+    )
     if turnover_matches:
-        value_str, unit = turnover_matches[-1]  # take the last occurrence
+        value_str, unit = turnover_matches[-1]
         required_turnover = float(value_str.replace(",", ""))
-
-        if unit.lower() == "crore":
+        if unit and unit.lower() == "crore":
             required_turnover *= 1e7
-        elif unit.lower() == "lakh":
+        elif unit and unit.lower() == "lakh":
             required_turnover *= 1e5
-        # if no unit is found, value is assumed to already be in rupees
+        return [{"type": "turnover", "name": "Average Annual Turnover",
+                 "required": required_turnover, "formula": None}]
 
-        requirements.append({
-            "type": "turnover",
-            "name": "Average Annual Turnover",
-            "required": required_turnover
-        })
-
-    return requirements
+    return []
 
 groq_client = None
 
@@ -951,53 +1141,148 @@ def call_groq(prompt, model_name="openai/gpt-oss-120b"):
         print(f"Groq call failed: {e}")
         return None
 
-def extract_similar_work_raw_chunk(sections):
-    """Returns a generous raw chunk starting at 'Definition of Similar Work'.
-    Boundary-finding (where the clause actually ends) is left to the LLM in
-    parse_similar_work_items, since PDF extraction doesn't reliably preserve
-    paragraph structure for regex-based boundary detection."""
-    technical = sections.get("Special Technical Criteria", "")
-    technical = re.sub(r"\s+", " ", technical)
+def extract_similar_work_raw_chunk(sections, full_text=""):
+    """
+    Returns the full bounded Special Technical Criteria section (max 2500
+    chars, clipped at COMPLIANCE) for the LLM to find the work-type definition.
 
-    start_match = re.search(
-        r"Defin(?:i|a)tion of Similar (?:Nature of )?Works?\s*:?-?\s*",
-        technical, re.IGNORECASE
-    )
-    if not start_match:
+    We send the whole section rather than starting from the first 'similar work'
+    mention because in many tenders the threshold conditions (3 works at 30%
+    etc.) appear BEFORE the actual work-type definition (e.g. item 1.1), so
+    anchoring on the first mention gives the LLM the wrong chunk.
+    """
+    # Step 1: get the technical section text
+    technical_raw = sections.get("Special Technical Criteria", "")
+    if not technical_raw and full_text:
+        tech_match = re.search(
+            r"special\s+technical\s+criteria",
+            full_text, re.IGNORECASE
+        )
+        if tech_match:
+            start = tech_match.start()
+            end_match = re.search(
+                r"(?:compliance|undertaking|general\s+instruction)",
+                full_text[start + 50:], re.IGNORECASE
+            )
+            end = start + 50 + end_match.start() if end_match else start + 3000
+            technical_raw = full_text[start:end]
+
+    if not technical_raw:
         return ""
 
-    return technical[start_match.end():start_match.end() + 1500].strip()
+    technical = re.sub(r"\s+", " ", technical_raw)
+
+    # Step 2: clip at COMPLIANCE so we never overshoot into unrelated sections
+    compliance_match = re.search(
+        r"(?:5\.\s*compliance|compliance\s+condition|compliance)",
+        technical, re.IGNORECASE
+    )
+    if compliance_match:
+        technical = technical[:compliance_match.start()]
+
+    # Step 3: check there is at least some mention of similar work,
+    # otherwise this section has nothing relevant
+    if not re.search(r"similar\s+work", technical, re.IGNORECASE):
+        return ""
+
+    # Return the whole section (up to 2500 chars) — the LLM will identify
+    # the work-type sub-item (e.g. item 1.1) within it
+    return technical[:2500].strip()
+
+def extract_certificate_rules(raw_chunk):
+    """
+    Per-tender extraction of the public-listed-company certificate conditions —
+    turnover threshold, exchange listing, incorporation age, and required
+    supporting documents — since these vary by tender and must not be
+    hardcoded as a single global rule.
+    """
+    if not raw_chunk:
+        return None
+
+    prompt = f"""Extract the certificate-acceptance rules for work experience certificates from this Indian government tender's Special Technical Criteria section.
+
+Specifically find:
+1. Whether certificates from a private individual are accepted (usually "shall not be considered" = not accepted).
+2. If certificates from a Public Listed company are accepted, under what conditions:
+   - Minimum average annual turnover (in crore) over how many financial years
+   - Which stock exchange(s) it must be listed on
+   - Minimum years since incorporation, relative to tender closing date
+   - Any additional supporting documents required if submitting a Public Listed company certificate (e.g. work order copy, BOQ, CA-certified payment details, TDS certificates, final bill copy — or others not in this list)
+
+Raw text:
+\"\"\"{raw_chunk}\"\"\"
+
+Return ONLY valid JSON, no markdown:
+{{
+  "private_individual_allowed": true_or_false,
+  "public_listed_requirements": {{
+    "min_avg_turnover_last_3yr_crore": <number or null>,
+    "must_be_listed_on": ["NSE", "BSE"] or whichever apply or null,
+    "min_years_since_incorporation": <number or null>,
+    "required_supporting_docs": ["<doc names as worded, normalized to snake_case>"]
+  }} or null if no public-listed-company allowance is mentioned at all,
+  "extraction_notes": "<anything unusual or any condition you weren't confident about>"
+}}
+
+If the tender doesn't mention public listed company certificates at all, set public_listed_requirements to null.
+If a number isn't stated, use null rather than guessing or defaulting to a typical value."""
+
+    response_text = call_groq(prompt)
+    if response_text is None:
+        return None
+
+    cleaned = response_text.replace("```json", "").replace("```", "").strip()
+    try:
+        return json.loads(cleaned)
+    except Exception:
+        print(f"Could not parse certificate rules: {cleaned!r}")
+        return None
 
 def parse_similar_work_items(raw_chunk):
     if not raw_chunk:
-        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": "", "not_found_reason": "No Special Technical Criteria text found in the document."}
 
-    prompt = f"""Below is raw text extracted from a tender document, starting right after the phrase "Definition of Similar Work" or "Definition of Similar Nature of Works". This text may run on past the actual definition clause into unrelated instructions (e.g. "Bidders shall confirm...", new numbered conditions, certificate rules, etc.) — text extraction from the PDF does not reliably preserve paragraph breaks, so you must judge where the definition clause actually ends based on meaning, not formatting.
+    prompt = f"""You are extracting the WORK-TYPE DEFINITION from a Special Technical Criteria section of an Indian government tender.
 
-Extract ONLY the work-type items that are part of the Definition of Similar Work clause itself. Stop as soon as the text moves on to a different topic (e.g. certification rules, bidder confirmations, new clause numbers unrelated to work-type definitions). Do NOT summarize or paraphrase items — copy each item's wording as close to the original as possible. Split on separators (slashes, "or", commas, roman numerals like "i.", "ii.").
+The section may be structured in different ways:
+- A paragraph starting with "Definition of Similar Work:" followed by work types
+- A sub-item row (e.g. item 1.1, 1.2) that lists specific equipment or work categories
+- A combination of both
+- A reference to an external document instead of an inline definition (e.g. "As specified in para 2.3 of EQC of tender document", "Refer Annexure-III") — in this case there is NO usable definition in this text.
+
+IGNORE the threshold/quantity conditions (e.g. "Three similar works each costing not less than 30%..." or "One similar work costing not less than 60%...") — those are quantity thresholds, NOT the work-type definition.
+IGNORE certificate rules, issuer conditions, NSE/BSE listing requirements, and bidder instructions.
+
+FIND the part that describes WHAT TYPE OF WORK qualifies — e.g. equipment names, work categories like "HT/LT Transformer & Switchgear", "erection of substations", "Repair/Overhauling of DG Sets" etc. This is often in a sub-item (1.1, 1.2, etc.) separate from the main eligibility paragraph.
 
 Raw text:
 \"\"\"{raw_chunk}\"\"\"
 
 Return ONLY valid JSON, no markdown, no preamble, no explanation:
-{{"allowed_items": ["item exactly as worded", "..."], "min_voltage_kv": null, "clean_definition_text": "the full definition clause, cleaned up, for display to a user"}}
+{{"allowed_items": ["item exactly as worded", "..."], "min_voltage_kv": null, "clean_definition_text": "the work-type definition clause, cleaned up, for display to a user", "not_found_reason": null}}
 
-If a minimum voltage in kV is explicitly mentioned as part of the definition (e.g. "for 11 KV or higher capacity substations"), put the number there; otherwise null."""
+Split allowed_items into separate work-type categories using semicolons, "or", and numbered/lettered markers (i., ii., iii.) as separators.
+Do NOT split on a slash or comma that is part of a single technical term — e.g. "HT/LT Transformer" is ONE term (High Tension/Low Tension transformer), and "33/11 kV" is ONE voltage designation. Keep these intact within their item.
+Each returned item should be a complete, meaningful equipment/work-type phrase, not a sentence fragment.If a minimum voltage in kV is explicitly mentioned (e.g. "for 11 KV or higher capacity substations"), put that number in min_voltage_kv.
+If multiple voltage classes are given separated by a slash (e.g. "33/11 kV Substations"), this means substations of EITHER voltage class qualify — return the LOWEST of the listed values as min_voltage_kv (since meeting the lower class is sufficient), not the highest.
+If no voltage is mentioned, use null.
+If you cannot find a usable work-type definition, return empty allowed_items AND set not_found_reason to a short, specific explanation of what you saw instead — e.g. "Section only references an external EQC/Annexure document (para 2.3) with no inline definition", "Section contains only threshold percentages, no work-type description", "Section text appears truncated/cut off before any definition". Be specific about what's actually in the text, don't guess at causes you can't see.
+If a usable definition IS found, set not_found_reason to null."""
 
     response_text = call_groq(prompt)
 
     if response_text is None:
-        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": "", "not_found_reason": "AI extraction call failed."}
 
     cleaned = response_text.replace("```json", "").replace("```", "").strip()
     try:
         parsed = json.loads(cleaned)
     except Exception:
         print(f"Could not parse Groq response as JSON: {cleaned!r}")
-        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": "", "not_found_reason": "AI response could not be parsed."}
 
     if "allowed_items" not in parsed:
-        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": ""}
+        return {"allowed_items": [], "min_voltage_kv": None, "clean_definition_text": "", "not_found_reason": "AI response was malformed."}
 
     cleaned_items = []
     for item in parsed["allowed_items"]:
@@ -1006,6 +1291,7 @@ If a minimum voltage in kV is explicitly mentioned as part of the definition (e.
             cleaned_items.append(item)
     parsed["allowed_items"] = cleaned_items
     parsed.setdefault("clean_definition_text", "")
+    parsed.setdefault("not_found_reason", None)
     return parsed
 
 def split_similar_work_items_regex(definition_text):
@@ -1054,18 +1340,29 @@ def _equipment_combo_matches_batch(works, allowed_items):
     )
     allowed_str = "\n".join(f"- {item}" for item in allowed_items)
 
-    prompt = f"""You are checking whether each company's past work falls under any of the tender's allowed work-type categories. Judge based on real-world engineering meaning, not just literal text overlap — e.g. "HT/LT Transformer & Switchgear" work should be considered part of "HT/LT substation work" since transformers and switchgear are substation equipment.
+    prompt = fprompt = f"""You are checking whether each company's past work falls under any of the tender's allowed work-type categories.
 
-        Allowed work-type categories for this tender:
-        {allowed_str}
+Judge strictly on whether the company's work involves the SAME EQUIPMENT or WORK SCOPE as an allowed category — not merely the same general field (e.g. both being "electrical work").
 
-        Company's past works (id: equipment description):
-        {work_list_str}
+Allowed real-world equivalences: a work item can match an allowed category if it is a component, sub-system, or synonym of that category's named equipment — e.g. "HT/LT Transformer & Switchgear" work reasonably falls under a category naming transformer/substation equipment, since switchgear is standard substation apparatus.
 
-        For each work id, decide true/false whether it falls under any allowed category above.
+Do NOT match on:
+- Shared industry or general field alone (e.g. street lighting is NOT DG set work, even though both are "electrical")
+- Vague topical similarity without shared equipment/scope
+- The word "electrical," "electrification," or "industrial" appearing in both
 
-        Return ONLY valid JSON, no markdown, no preamble:
-        {{"matches": {{"<work_id>": true_or_false, ...}}}}"""
+If you are not confident the work shares actual equipment or scope with an allowed category, return false. When in doubt, return false — a missed match is far less costly than a false one here.
+
+Allowed work-type categories for this tender:
+{allowed_str}
+
+Company's past works (id: equipment description):
+{work_list_str}
+
+For each work id, decide true/false.
+
+Return ONLY valid JSON, no markdown, no preamble:
+{{"matches": {{"<work_id>": true_or_false, ...}}}}"""
 
     response_text = call_groq(prompt)
     if response_text is None:
@@ -1104,28 +1401,37 @@ def tender():
         tender_value_crore = float(re.sub(r"[^\d.]", "", advertised_value_str)) / 1e7
     except ValueError:
         tender_value_crore = 0.0
-
-    # financial check
-    financial_requirements = extract_eligibility(sections)
+    print("DEBUG tender_value_crore:", tender_value_crore, "advertised_value_str:", advertised_value_str)
+    # financial check — pass full_text so extractor can find the section
+    # even when extract_sections() did not split it out (non-standard formats)
+    financial_requirements = extract_eligibility(sections, full_text)
     profile = CompanyProfile.query.first()
-    financial_results = evaluate_financial_eligibility(financial_requirements, profile)
+    completion_period_years = parse_completion_years(nit_data.get("Period of Completion", "-"))
+    financial_results = evaluate_financial_eligibility(
+        financial_requirements, profile, tender_value_crore, completion_period_years
+    )
 
     dashboard = build_dashboard_data(sections)
 
-    technical_result, definition_text, matched_works, near_miss_works = evaluate_technical_eligibility(sections, tender_value_crore)
+    # pass full_text for the same reason
+    technical_result, definition_text, matched_works, near_miss_works, cert_rules, cert_excluded = evaluate_technical_eligibility(sections, tender_value_crore, full_text)
+    print("DEBUG cert_rules:", cert_rules)
+
     technical_display = {
         "lookback_period_years": LOOKBACK_PERIOD_YEARS,
         "similar_work_options": SIMILAR_WORK_OPTIONS,
         "similar_work_definition": definition_text or "Not specified",
         "mandatory_conditions": TECHNICAL_MANDATORY_CONDITIONS,
         "eligible": technical_result.eligible,
+        "undetermined": technical_result.undetermined,
         "required": technical_result.required,
         "actual": technical_result.actual,
         "matched_works": matched_works,
         "near_miss_works": near_miss_works,
-        "matched_works": matched_works,
-        "near_miss_works": near_miss_works,
-        "certificate_conditions_checked": True,  # these are always enforced via _certificate_ok
+        "certificate_conditions_checked": not technical_result.undetermined,
+        "certificate_conditions_checked": cert_rules is not None,
+        "certificate_rules_undetermined": cert_rules is None,
+        "certificate_excluded": cert_excluded,
     }
     # combine results
     results = financial_results + [technical_result]
@@ -1133,8 +1439,11 @@ def tender():
     # compliance check not wired yet — extractor for TenderComplianceRequirement
     # still needs to be written; skipping for now so this doesn't silently no-op as "pass"
 
-    overall_eligible = all(r.eligible for r in results)
-    failed = [r for r in results if not r.eligible]
+    # Undetermined criteria (e.g. similar work defined in external EQC doc)
+    # are excluded from pass/fail — they show as a warning, not a hard fail.
+    determined = [r for r in results if not r.undetermined]
+    overall_eligible = all(r.eligible for r in determined)
+    failed = [r for r in determined if not r.eligible]
     reason = "; ".join(f"{r.name}: required {r.required}, actual {r.actual}" for r in failed) or "All criteria met"
 
     history = TenderHistory(
@@ -1143,7 +1452,7 @@ def tender():
         tender_value_crore=tender_value_crore,
         eligibility_verdict="ELIGIBLE" if overall_eligible else "NOT ELIGIBLE",
         verdict_reason=reason,
-        eligibility_criteria=json.dumps([asdict(r) for r in results]),
+        certificate_rules_json=json.dumps(cert_rules) if cert_rules else None,
         created_at=datetime.utcnow()
     )
     db.session.add(history)
