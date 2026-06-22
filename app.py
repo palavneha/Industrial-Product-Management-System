@@ -839,7 +839,7 @@ def evaluate_technical_eligibility(sections, tender_value_crore, full_text=""):
             actual=parsed.get("not_found_reason") or "Could not determine — no work-type definition found",
             eligible=False, undetermined=True
         )
-        return result, definition_text, [], [], cert_rules   # <-- must include cert_rules here too
+        return result, definition_text, [], [], cert_rules, cert_excluded   # <-- must include cert_rules here too
 
     cutoff = date.today() - timedelta(days=365 * LOOKBACK_PERIOD_YEARS)
 
@@ -1497,7 +1497,15 @@ def tender_history_detail(id):
     return render_template("tender_result.html", result=result, history=record, criteria=None)
 
 # ---------- AUTH ----------
-
+@app.after_request
+def add_no_cache_headers(response):
+    """Prevent browsers from serving cached pages via back/forward
+    after logout — forces a fresh request that re-checks the session."""
+    if request.endpoint not in PUBLIC_ENDPOINTS:
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
 @app.route("/login", methods=["GET", "POST"])
 def site_login():
     if request.method == "POST":
