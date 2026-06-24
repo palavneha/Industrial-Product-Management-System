@@ -226,7 +226,13 @@ Tender Analysis
         </div>
       </div>
     {% endif %}
-
+    {% if result.technical_eligibility.external_reference %}
+    <div class="mt-4 flex items-start gap-3 bg-blue-50 border border-blue-200 rounded-xl p-4 text-sm text-blue-900">
+      <span class="text-lg">ℹ️</span>
+      <p>{{ result.technical_eligibility.external_reference }}</p>
+    </div>
+    {% endif %}
+      
     <div class="mt-4">
       <details class="group">
         <summary class="font-semibold cursor-pointer list-none flex items-center gap-2 text-gray-700">
@@ -235,6 +241,7 @@ Tender Analysis
         </summary>
 
         <div class="mt-4 space-y-6">
+          {% if not result.technical_eligibility.undetermined %}
           <div>
             <h4 class="font-semibold mb-2 text-sm text-gray-600">Similar Work Conditions</h4>
             <table class="w-full text-sm">
@@ -254,7 +261,8 @@ Tender Analysis
               </tbody>
             </table>
           </div>
-
+          
+          {% endif %}
           <div>
             <h4 class="font-semibold mb-2 text-sm text-gray-600">Definition of Similar Work</h4>
             <p class="text-sm text-gray-700">{{ result.technical_eligibility.similar_work_definition }}</p>
