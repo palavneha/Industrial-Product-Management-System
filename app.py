@@ -456,29 +456,11 @@ def extract_pdf_text(pdf):
 def extract_sections(full_text):
 
     headings = [
-
-        "1. NIT HEADER",
-
-        "2. SCHEDULE",
-
-        "Eligibility Conditions",
-
-        "Special Financial Criteria",
-
-        "Special Technical Criteria",
-
-        "Commercial-Compliance",
-
-        "General Instructions",
-
-        "Special Conditions",
-
-        "Technical-Compliances",
-
-        "Undertakings",
-
-        "Custom"
-
+        "1. NIT HEADER", "2. SCHEDULE", "Eligibility Conditions",
+        "Special Financial Criteria", "Special Technical Criteria",
+        "Standard Technical Criteria",
+        "Commercial-Compliance", "General Instructions", "Special Conditions",
+        "Technical-Compliances", "Undertakings", "Custom"
     ]
 
     lower = full_text.lower()
@@ -1180,42 +1162,49 @@ def call_groq(prompt, model_name="openai/gpt-oss-120b"):
         return None
 
 def extract_similar_work_raw_chunk(sections, full_text=""):
-    """
-    Always search full_text directly for 'Special Technical Criteria' rather
-    than relying on extract_sections()'s heading-based split — that function
-    can mis-truncate this section when a heading-like phrase (e.g. "Special
-    Conditions") appears incidentally inside the section's own prose, well
-    before the real section boundary.
-    """
     if not full_text:
-        # no full_text available — fall back to whatever extract_sections gave us
-        technical_raw = sections.get("Special Technical Criteria", "")
+        technical_raw = (
+            sections.get("Special Technical Criteria", "")
+            or sections.get("Standard Technical Criteria", "")
+        )
         if not technical_raw:
             return ""
     else:
-        tech_match = re.search(
-            r"special\s+technical\s+criteria",
+        # Some tenders have BOTH "Special Technical Criteria" (e.g. licensing
+        # requirements) and "Standard Technical Criteria" (the actual similar-
+        # work clause) as separate headings. Try every match of either heading
+        # and use the first one whose nearby text actually mentions "similar
+        # work" — rather than blindly taking whichever heading appears first.
+        candidates = list(re.finditer(
+            r"(?:special|standard)\s+technical\s+criteria",
             full_text, re.IGNORECASE
-        )
-        if not tech_match:
+        ))
+        if not candidates:
             return ""
-        start = tech_match.start()
-        # Cap the search window itself, rather than searching the boundary
-        # heading across the whole rest of the document — this avoids the
-        # same false-positive-heading problem in reverse.
-        window = full_text[start:start + 6000]
-        end_match = re.search(
-            r"(?:undertaking|general\s+instruction|commercial[-\s]compliance)",
-            window[50:], re.IGNORECASE
-        )
-        end = 50 + end_match.start() if end_match else len(window)
-        technical_raw = window[:end]
+
+        technical_raw = ""
+        for match in candidates:
+            start = match.start()
+            window = full_text[start:start + 6000]
+            end_match = re.search(
+                r"(?:\n|^)\s*(?:undertaking|general\s+instruction|commercial[-\s]compliance)",
+                window[50:], re.IGNORECASE
+            )
+            end = 50 + end_match.start() if end_match else len(window)
+            candidate_text = window[:end]
+            if re.search(r"similar\s+work", candidate_text, re.IGNORECASE):
+                technical_raw = candidate_text
+                break
+
+        if not technical_raw:
+            return ""
 
     technical = re.sub(r"\s+", " ", technical_raw)
 
     if not re.search(r"similar\s+work", technical, re.IGNORECASE):
         return ""
 
+    print("DEBUG raw_chunk length:", len(technical[:6000].strip()), "| contains 'Definition of Similar Work':", "definition of similar work" in technical.lower())
     return technical[:6000].strip()
 
 def extract_certificate_rules(raw_chunk):
@@ -1689,10 +1678,17 @@ def admin_work_experience():
     works = WorkExperience.query.order_by(WorkExperience.completion_date.desc()).all()
     return render_template("admin/work_experience_list.html", works=works)
 
+UNIT_TO_CRORE = {
+    "thousand": 0.0001,   # 1 thousand rupees = 0.0001 crore
+    "lakh": 0.01,         # 1 lakh = 0.01 crore
+    "crore": 1.0,
+}
 
 def _populate_work_experience(w, form):
     w.project_name = form.get("project_name")
-    w.work_value_crore = float(form["work_value_crore"])
+    amount = float(form["work_value_amount"])
+    unit = form.get("work_value_unit", "crore")
+    w.work_value_crore = amount * UNIT_TO_CRORE.get(unit, 1.0)
     w.completion_date = datetime.strptime(form["completion_date"], "%Y-%m-%d").date()
     w.is_substantially_completed = form.get("is_substantially_completed") == "on"
     w.work_type = form.get("work_type")
@@ -1711,7 +1707,6 @@ def _populate_work_experience(w, form):
     w.has_ca_certified_payment_details = form.get("has_ca_certified_payment_details") == "on"
     w.has_tds_certificates = form.get("has_tds_certificates") == "on"
     w.has_final_bill_copy = form.get("has_final_bill_copy") == "on"
-
 
 @app.route("/admin/work-experience/add", methods=["GET", "POST"])
 @login_required
