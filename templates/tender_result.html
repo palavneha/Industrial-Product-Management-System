@@ -289,7 +289,22 @@ Tender Analysis
   </div>
 </div>
 
-
+<!-- OTHER MANDATORY REQUIREMENTS (company-level, not work-experience related) -->
+{% if result.company_level_requirements %}
+<div class="bg-white rounded-xl border overflow-hidden mb-6">
+  <div class="p-6 border-b">
+    <h2 class="text-xl font-bold">Other Mandatory Requirements</h2>
+    <p class="text-sm text-gray-500 mt-1">Company-level documents and licenses — not checked against your records, verify manually.</p>
+  </div>
+  <div class="p-6">
+    <ul class="list-disc ml-6 text-sm text-gray-700 space-y-2">
+      {% for item in result.company_level_requirements %}
+      <li>{{ item }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+</div>
+{% endif %}
 <!-- FLOATING BUTTON -->
 
 <button

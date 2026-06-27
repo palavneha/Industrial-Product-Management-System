@@ -186,6 +186,7 @@ class WorkExperience(db.Model):
     issuer_listed_nse = db.Column(db.Boolean, default=False)
     issuer_listed_bse = db.Column(db.Boolean, default=False)
     issuer_incorporation_date = db.Column(db.Date)
+    issuer_certificate_authorized = db.Column(db.Boolean, default=False)
     has_work_order_copy = db.Column(db.Boolean, default=False)
     has_boq = db.Column(db.Boolean, default=False)
     has_ca_certified_payment_details = db.Column(db.Boolean, default=False)
@@ -766,6 +767,88 @@ def parse_completion_years(period_str):
     value = float(value)
     return value / 12 if unit.lower().startswith("month") else value
 
+def extract_company_level_requirements(full_text):
+    """
+    Scan the technical/eligibility sections for mandatory company-level
+    requirements that are separate from the similar-work-experience clause —
+    e.g. contractor licenses, firm-constitution documents, sole-proprietor
+    undertakings. These currently aren't checked against any database field,
+    but should be surfaced so a reviewer knows to verify them manually.
+    """
+    if not full_text:
+        return []
+
+    # Grab a wide window covering both "Special" and "Standard" Technical
+    # Criteria headings, plus Eligibility Conditions — broader than the
+    # similar-work-specific chunk, since these requirements often appear
+    # BEFORE the similar-work item, in their own numbered items.
+    match = re.search(
+        r"(?:special|standard)\s+technical\s+criteria|eligibility\s+conditions",
+        full_text, re.IGNORECASE
+    )
+    if not match:
+        return []
+
+    start = match.start()
+    window = full_text[start:start + 8000]
+    window = re.sub(r"\s+", " ", window).strip()
+
+    prompt = f"""You are reviewing an Indian government tender's technical/eligibility section for MANDATORY COMPANY-LEVEL requirements — things the bidding company itself must hold or submit, separate from past project/work experience.
+
+Look specifically for things like:
+- Contractor licenses or registrations (e.g. "Electrical Contractor License", "CPWD registration")
+- Firm-constitution proof (e.g. partnership deed, sole proprietor undertaking, documents establishing legal structure)
+- Mandatory undertakings tied to a specific entity type (e.g. "if Sole Proprietor, submit...")
+- Any other mandatory document/certificate NOT related to past similar-work experience
+
+IGNORE anything about: similar-work experience thresholds, work-type definitions, certificate-issuer conditions for PAST WORK certificates (private individual / public listed company rules) — those are handled elsewhere.
+
+Raw text:
+\"\"\"{window}\"\"\"
+
+Return ONLY valid JSON, no markdown:
+{{"company_level_requirements": ["requirement 1 in plain words, including any conditions like 'only if Sole Proprietor'", "requirement 2", "..."]}}
+
+If none are found, return an empty list."""
+
+    response_text = call_groq(prompt)
+    if response_text is None:
+        return []
+
+    cleaned = response_text.replace("```json", "").replace("```", "").strip()
+    try:
+        parsed = json.loads(cleaned)
+        return parsed.get("company_level_requirements", [])
+    except Exception:
+        print(f"Could not parse company-level requirements: {cleaned!r}")
+        return []
+
+def extract_technical_conditions(sections):
+    technical = re.sub(r"\s+", " ", sections.get("Special Technical Criteria", ""))
+    if not technical:
+        return TECHNICAL_MANDATORY_CONDITIONS  # fall back to hardcoded
+
+    prompt = f"""From this Railway tender's Special Technical Criteria section, extract the list of additional conditions or notes about work experience certificates (usually under "Note:" in the main clause).
+Return ONLY a JSON array of strings, one condition per item, no markdown, no preamble.
+Example: ["Condition one.", "Condition two."]
+
+Section text:
+{technical[:3000]}"""
+
+    response = call_groq(prompt)
+    if response is None:
+        return TECHNICAL_MANDATORY_CONDITIONS
+
+    cleaned = response.replace("```json", "").replace("```", "").strip()
+    try:
+        conditions = json.loads(cleaned)
+        if isinstance(conditions, list) and conditions:
+            return conditions
+    except Exception:
+        pass
+
+    return TECHNICAL_MANDATORY_CONDITIONS  # fall back if parsing fails
+
 def evaluate_financial_eligibility(requirements, profile, tender_value_crore=None, completion_period_years=None):
     results = []
     recent = (FinancialYear.query.filter_by(company_id=profile.id)
@@ -971,7 +1054,7 @@ def evaluate_technical_eligibility(sections, tender_value_crore, full_text=""):
 
 def _certificate_ok(w, cert_rules):
     if cert_rules is None:
-        return None, "Could not determine this tender's certificate rules — verify manually"
+        return None, "Tender's certificate rules don't address public-listed-company issuers — verify manually whether this certificate is acceptable"
 
     if w.certificate_issuer_type == "private_individual":
         if not cert_rules.get("private_individual_allowed", False):
@@ -981,7 +1064,7 @@ def _certificate_ok(w, cert_rules):
     if w.certificate_issuer_type == "public_listed_company":
         req = cert_rules.get("public_listed_requirements")
         if req is None:
-            return None, "Tender's certificate rules don't address public-listed-company issuers — verify manually whether this certificate is acceptable"
+            return False, "Tender does not permit public listed company certificates"
 
         min_turnover = req.get("min_avg_turnover_last_3yr_crore")
         if min_turnover is not None and (w.issuer_avg_turnover_3yr_crore or 0) < min_turnover:
@@ -1001,6 +1084,9 @@ def _certificate_ok(w, cert_rules):
         for doc in req.get("required_supporting_docs", []):
             if not getattr(w, f"has_{doc}", False):
                 return False, f"Missing supporting document: {doc.replace('_', ' ')}"
+
+        if req.get("requires_authorized_signatory") and not w.issuer_certificate_authorized:
+            return False, "Certificate not confirmed as issued by a person authorized by the public listed company"
 
     return True, None
 
@@ -1149,17 +1235,26 @@ def get_groq_client():
         groq_client = Groq(api_key=os.environ.get("GROQ_API_KEY"))
     return groq_client
 
-def call_groq(prompt, model_name="openai/gpt-oss-120b"):
-    try:
-        response = get_groq_client().chat.completions.create(
-            model=model_name,
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0,
-        )
-        return response.choices[0].message.content
-    except Exception as e:
-        print(f"Groq call failed: {e}")
-        return None
+def call_groq(prompt, model_name="openai/gpt-oss-120b", max_retries=1):
+    for attempt in range(max_retries + 1):
+        try:
+            response = get_groq_client().chat.completions.create(
+                model=model_name,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0,
+            )
+            return response.choices[0].message.content
+        except Exception as e:
+            error_str = str(e)
+            print(f"Groq call failed (attempt {attempt + 1}): {error_str}")
+            if attempt < max_retries:
+                wait_match = re.search(r"try again in ([\d.]+)s", error_str)
+                wait_seconds = float(wait_match.group(1)) + 1 if wait_match else 5
+                print(f"DEBUG: waiting {wait_seconds:.1f}s before retry")
+                time.sleep(wait_seconds)
+            else:
+                return None
+    return None
 
 def extract_similar_work_raw_chunk(sections, full_text=""):
     if not full_text:
@@ -1207,43 +1302,59 @@ def extract_similar_work_raw_chunk(sections, full_text=""):
     print("DEBUG raw_chunk length:", len(technical[:6000].strip()), "| contains 'Definition of Similar Work':", "definition of similar work" in technical.lower())
     return technical[:6000].strip()
 
+def filter_unrecognized_conditions(conditions):
+    """Drop unrecognized_conditions entries that just restate the existing
+    default (Govt/PSU certificates accepted unconditionally) — already
+    covered by _certificate_ok()'s fallthrough behavior, not a real gap."""
+    govt_pattern = re.compile(r"govern?ment|govt\.?|psu|public\s+sector", re.IGNORECASE)
+    accepted_pattern = re.compile(r"accept", re.IGNORECASE)
+
+    filtered = []
+    for item in conditions:
+        if govt_pattern.search(item) and accepted_pattern.search(item):
+            continue
+        filtered.append(item)
+    return filtered
+
 def extract_certificate_rules(raw_chunk):
-    """
-    Per-tender extraction of the public-listed-company certificate conditions —
-    turnover threshold, exchange listing, incorporation age, and required
-    supporting documents — since these vary by tender and must not be
-    hardcoded as a single global rule.
-    """
     if not raw_chunk:
         return None
 
     prompt = f"""Extract the certificate-acceptance rules for work experience certificates from this Indian government tender's Special Technical Criteria section.
 
-    Specifically find:
-    1. Whether certificates from a private individual are accepted (usually "shall not be considered" = not accepted).
-    2. If certificates from a Public Listed company are accepted, under what conditions:
-    - Minimum average annual turnover (in crore) over how many financial years
-    - Which stock exchange(s) it must be listed on
-    - Minimum years since incorporation, relative to tender closing date
-    - Any additional supporting documents required if submitting a Public Listed company certificate (e.g. work order copy, BOQ, CA-certified payment details, TDS certificates, final bill copy — or others not in this list)
+Specifically find:
+1. Whether certificates from a private individual are accepted (usually "shall not be considered" = not accepted).
+2. If certificates from a Public Listed company are accepted, under what conditions:
+   - Minimum average annual turnover (in crore) over how many financial years
+   - Which stock exchange(s) it must be listed on
+   - Minimum years since incorporation, relative to tender closing date
+   - Any additional supporting documents required if submitting a Public Listed company certificate (e.g. work order copy, BOQ, CA-certified payment details, TDS certificates, final bill copy — or others not in this list)
+   - Whether the certificate must be issued specifically by a person AUTHORIZED by the Public Listed company to issue such certificates (true/false)
+3. Any OTHER certificate-related condition in the text that does NOT fit the patterns above. You must ALWAYS check specifically for these two recurring patterns, and include them if present, even if they seem minor:
+   (a) Any mandatory COMPLETION CERTIFICATE requirement tied to similar-work experience, especially if it carries a rejection consequence (e.g. "completion certificates must be submitted... failing which the offer will be summarily rejected")
+   (b) Any entity-type-specific undertaking requirement (e.g. "if Sole Proprietor, submit an undertaking on stamp paper with PAN number")
+   Beyond these two, also flag anything else certificate-related you find — notarization, JV/consortium certificates, foreign company certificates, etc. List each in plain words, and do not omit (a) or (b) if either is present in the text, even if you've already covered other conditions.
+Raw text:
+\"\"\"{raw_chunk}\"\"\"
 
-    Raw text:
-    \"\"\"{raw_chunk}\"\"\"
+Return ONLY valid JSON, no markdown:
+{{
+  "private_individual_allowed": true_or_false,
+  "public_listed_requirements": {{
+    "min_avg_turnover_last_3yr_crore": <number or null>,
+    "must_be_listed_on": ["NSE", "BSE"] or whichever apply or null,
+    "min_years_since_incorporation": <number or null>,
+    "required_supporting_docs": ["<doc names as worded, normalized to snake_case>"],
+    "requires_authorized_signatory": true_or_false
+  }} or null if no public-listed-company allowance is mentioned at all,
+  "unrecognized_conditions": ["plain-worded condition 1", "..."],
+  "extraction_notes": "<anything unusual or any condition you weren't confident about>"
+}}
 
-    Return ONLY valid JSON, no markdown:
-    {{
-    "private_individual_allowed": true_or_false,
-    "public_listed_requirements": {{
-        "min_avg_turnover_last_3yr_crore": <number or null>,
-        "must_be_listed_on": ["NSE", "BSE"] or whichever apply or null,
-        "min_years_since_incorporation": <number or null>,
-        "required_supporting_docs": ["<doc names as worded, normalized to snake_case>"]
-    }} or null if no public-listed-company allowance is mentioned at all,
-    "extraction_notes": "<anything unusual or any condition you weren't confident about>"
-    }}
-
-    If the tender doesn't mention public listed company certificates at all, set public_listed_requirements to null.
-    If a number isn't stated, use null rather than guessing or defaulting to a typical value."""
+If the tender doesn't mention public listed company certificates at all, set public_listed_requirements to null.
+If a number isn't stated, use null rather than guessing or defaulting to a typical value.
+Remember: a plain statement that Government Organization certificates are accepted is NOT an unrecognized condition.
+If there are no certificate conditions beyond the structured fields above, return an empty list for unrecognized_conditions."""
 
     response_text = call_groq(prompt)
     if response_text is None:
@@ -1251,7 +1362,10 @@ def extract_certificate_rules(raw_chunk):
 
     cleaned = response_text.replace("```json", "").replace("```", "").strip()
     try:
-        return json.loads(cleaned)
+        parsed = json.loads(cleaned)
+        parsed.setdefault("unrecognized_conditions", [])
+        parsed["unrecognized_conditions"] = filter_unrecognized_conditions(parsed["unrecognized_conditions"])
+        return parsed
     except Exception:
         print(f"Could not parse certificate rules: {cleaned!r}")
         return None
@@ -1390,8 +1504,6 @@ Return ONLY valid JSON, no markdown, no preamble:
         return {w.id: False for w in works}, False
 
 def build_mandatory_conditions_display(cert_rules):
-    """Build the 'Additional Conditions' list from this tender's actual
-    extracted certificate rules, instead of a hardcoded global list."""
     if cert_rules is None:
         return ["Certificate eligibility conditions could not be determined for this tender — verify manually."]
 
@@ -1418,10 +1530,19 @@ def build_mandatory_conditions_display(cert_rules):
             conditions.append(
                 f"If the certificate is from a Public Listed company, the tenderer must also submit the {docs_str}."
             )
+        if req.get("requires_authorized_signatory"):
+            conditions.append("The certificate from a Public Listed company must be issued by a person authorized by that company to issue such certificates.")
     else:
         conditions.append("This tender's text does not specify conditions for accepting Public Listed company certificates.")
 
-    return conditions or ["No specific certificate conditions were extracted for this tender."]
+    if not conditions:
+        conditions = ["No specific certificate conditions were extracted for this tender."]
+
+    unrecognized = cert_rules.get("unrecognized_conditions") or []
+    for item in unrecognized:
+        conditions.append(f"⚠ Not checked against your records — verify manually: {item}")
+
+    return conditions
 
 @app.route("/tender", methods=["GET", "POST"])
 def tender():
@@ -1453,6 +1574,8 @@ def tender():
     financial_results = evaluate_financial_eligibility(
         financial_requirements, profile, tender_value_crore, completion_period_years
     )
+    company_level_requirements = extract_company_level_requirements(full_text)
+    print("DEBUG company_level_requirements:", company_level_requirements)
 
     dashboard = build_dashboard_data(sections)
 
@@ -1495,6 +1618,7 @@ def tender():
         "dashboard": dashboard,
         "eligibility": [asdict(r) for r in financial_results],
         "technical_eligibility": technical_display,
+        "company_level_requirements": company_level_requirements,
     }
 
     history = TenderHistory(
@@ -1698,6 +1822,7 @@ def _populate_work_experience(w, form):
     w.issuer_avg_turnover_3yr_crore = float(form["issuer_avg_turnover_3yr_crore"]) if form.get("issuer_avg_turnover_3yr_crore") else None
     w.issuer_listed_nse = form.get("issuer_listed_nse") == "on"
     w.issuer_listed_bse = form.get("issuer_listed_bse") == "on"
+    w.issuer_certificate_authorized = form.get("issuer_certificate_authorized") == "on"
     w.issuer_incorporation_date = (
         datetime.strptime(form["issuer_incorporation_date"], "%Y-%m-%d").date()
         if form.get("issuer_incorporation_date") else None
